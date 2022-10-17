@@ -6,6 +6,12 @@ use crate::orderbook::{
         OrderbookAggregatorServer,
     },
 };
+use opentelemetry::{
+    Key,
+    global,
+    trace::{FutureExt, TraceContextExt, Tracer},
+    Context,
+};
 use tonic::{
     transport::Server,
     Response,
@@ -24,7 +30,7 @@ impl OrderbookAggregator for OrderbookAggregatorImpl {
     async fn book_summary(
         &self, _: tonic::Request<Empty>,
     ) -> Result<tonic::Response<Self::BookSummaryStream>, tonic::Status> {
-        let (mut tx, rx) = mpsc::channel(4);
+        let (tx, rx) = mpsc::channel(4);
 
         tokio::spawn(async move {
             // let mut summary = Summary::new();
@@ -42,6 +48,10 @@ impl OrderbookAggregator for OrderbookAggregatorImpl {
 }
 
 pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    let tracer = global::tracer("run_server");
+    let span = tracer.start(format!("running server at: {}", port));
+    let cx = Context::current_with_span(span);
+
     let addr = format!("[::1]:{}", port).parse().unwrap();
     let orderbook = OrderbookAggregatorImpl::default();
 
@@ -50,6 +60,7 @@ pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     Server::builder()
         .add_service(OrderbookAggregatorServer::new(orderbook))
         .serve(addr)
+        .with_context(cx)
         .await?;
 
     Ok(())
