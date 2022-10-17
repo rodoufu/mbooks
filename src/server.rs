@@ -41,8 +41,8 @@ impl OrderbookAggregator for OrderbookAggregatorImpl {
     }
 }
 
-pub async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::1]:50051".parse().unwrap();
+pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    let addr = format!("[::1]:{}", port).parse().unwrap();
     let orderbook = OrderbookAggregatorImpl::default();
 
     println!("Orderbook server listening on {}", addr);
