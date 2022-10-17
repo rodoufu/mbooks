@@ -1,13 +1,15 @@
 use crate::orderbook::{
     Empty,
-    orderbook_aggregator_client::{
-        OrderbookAggregatorClient,
-    },
+    orderbook_aggregator_client::OrderbookAggregatorClient,
 };
 use opentelemetry::{
     Key,
     global,
-    trace::{FutureExt, TraceContextExt, Tracer},
+    trace::{
+        FutureExt,
+        TraceContextExt,
+        Tracer,
+    },
     Context,
 };
 use tonic::{

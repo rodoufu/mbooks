@@ -9,7 +9,11 @@ use crate::orderbook::{
 use opentelemetry::{
     Key,
     global,
-    trace::{FutureExt, TraceContextExt, Tracer},
+    trace::{
+        FutureExt,
+        TraceContextExt,
+        Tracer,
+    },
     Context,
 };
 use tonic::{
