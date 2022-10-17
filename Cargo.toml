@@ -6,3 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-stream = "0.2"
+grpc = "*"
+grpc-protobuf = "*"
+httpbis = { git = "https://github.com/stepancheg/rust-http2" }
+protobuf = "2"
+prost = "0.10.1"
+tonic = "0.7.1"
+tokio = { version = "1.18.0", features = ["macros", "rt-multi-thread"] }
+tokio-stream = "0.1"
+
+[build-dependencies]
+protoc-rust-grpc = "0.8.2"
+tonic-build = "0.7.2"
