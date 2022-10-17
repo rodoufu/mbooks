@@ -8,7 +8,6 @@ use crate::orderbook::{
 };
 use tonic::{
     transport::Server,
-    Request,
     Response,
     Status,
 };
@@ -23,7 +22,7 @@ impl OrderbookAggregator for OrderbookAggregatorImpl {
     type BookSummaryStream = ReceiverStream<Result<Summary, Status>>;
 
     async fn book_summary(
-        &self, request: tonic::Request<Empty>,
+        &self, _: tonic::Request<Empty>,
     ) -> Result<tonic::Response<Self::BookSummaryStream>, tonic::Status> {
         let (mut tx, rx) = mpsc::channel(4);
 

@@ -6,22 +6,6 @@ use crate::{
     client::run_client,
     server::run_server,
 };
-use orderbook::{
-    Empty,
-    Summary,
-    orderbook_aggregator_server::{
-        OrderbookAggregator,
-        OrderbookAggregatorServer,
-    },
-};
-use tonic::{
-    transport::Server,
-    Request,
-    Response,
-    Status,
-};
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 use std::env;
 
 #[tokio::main]
