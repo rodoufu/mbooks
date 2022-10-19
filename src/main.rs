@@ -1,3 +1,5 @@
+mod types;
+mod binance;
 mod orderbook;
 mod client;
 mod server;

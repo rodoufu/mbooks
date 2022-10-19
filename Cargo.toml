@@ -7,12 +7,19 @@ edition = "2021"
 
 [dependencies]
 clap = "4.0.15"
+futures-channel = "0.3.24"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 opentelemetry = { version = "0.18.0", features = ["rt-tokio"] }
 opentelemetry-jaeger = { version = "0.17.0", features = ["rt-tokio"] }
 prost = "0.11.0"
+serde = "1.0"
+serde_json = { version = "1.0", features = ["raw_value"] }
+serde_derive = "1.0"
 tonic = "0.8.2"
 tokio = { version = "1.21", features = ["macros", "rt-multi-thread"] }
 tokio-stream = "0.1"
+tokio-tungstenite = { version = "0.17.2", features = ["native-tls"] }
+url = "2.3.1"
 
 [build-dependencies]
 tonic-build = "0.8.2"

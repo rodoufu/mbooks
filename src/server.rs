@@ -6,6 +6,7 @@ use crate::orderbook::{
         OrderbookAggregatorServer,
     },
 };
+use futures_channel;
 use opentelemetry::{
     Key,
     global,
@@ -23,6 +24,7 @@ use tonic::{
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use crate::binance::run_binance;
 
 #[derive(Default)]
 pub struct OrderbookAggregatorImpl {}
@@ -51,7 +53,7 @@ impl OrderbookAggregator for OrderbookAggregatorImpl {
     }
 }
 
-pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_grpc_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let tracer = global::tracer("run_server");
     let span = tracer.start(format!("running server at: {}", port));
     let cx = Context::current_with_span(span);
@@ -66,6 +68,24 @@ pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         .serve(addr)
         .with_context(cx)
         .await?;
+
+    Ok(())
+}
+
+pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    let (summary_sender, summary_receiver) = tokio::sync::mpsc::unbounded_channel();
+
+    let res = tokio::try_join!(
+        run_binance(summary_sender, "ethbtc", 10),
+        run_grpc_server(port),
+    );
+
+    match res {
+        Ok((first, second)) => {}
+        Err(err) => {
+            println!("a problem occurred: {}", err);
+        }
+    }
 
     Ok(())
 }
