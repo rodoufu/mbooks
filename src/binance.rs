@@ -76,8 +76,10 @@ pub async fn run_binance(
     // let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
     // tokio::spawn(read_stdin(stdin_tx));
 
-    let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
-    println!("WebSocket handshake has been successfully completed");
+    let (ws_stream, _) = connect_async(url)
+        .with_context(cx.clone())
+        .await.expect("Failed to connect");
+    println!("Binance WebSocket handshake has been successfully completed");
 
     let (write, read) = ws_stream.split();
 
@@ -129,3 +131,6 @@ pub async fn run_binance(
     // future::select(stdin_to_ws, ws_to_stdout).await;
     Ok(())
 }
+
+// TODO add unit tests
+//{"lastUpdateId":6062044077,"bids":[["0.06754400","31.99050000"],["0.06754300","4.60890000"],["0.06754200","0.00610000"],["0.06754100","0.02340000"],["0.06754000","10.47460000"],["0.06753900","89.02020000"],["0.06753800","0.80470000"],["0.06753700","1.10160000"],["0.06753600","3.80110000"],["0.06753500","13.33860000"]],"asks":[["0.06754500","27.06160000"],["0.06754600","5.45080000"],["0.06754700","0.03340000"],["0.06754800","0.00610000"],["0.06754900","10.02670000"],["0.06755000","55.60590000"],["0.06755100","0.00610000"],["0.06755300","0.02340000"],["0.06755400","0.00610000"],["0.06755600","0.20880000"]]}

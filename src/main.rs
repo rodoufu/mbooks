@@ -1,5 +1,6 @@
 mod types;
 mod binance;
+mod bitstamp;
 mod orderbook;
 mod client;
 mod server;
@@ -24,6 +25,7 @@ fn cli() -> Command {
         .subcommand_required(true)
         .arg_required_else_help(true)
         .allow_external_subcommands(true)
+        // TODO add param for the symbol
         .subcommand(
             Command::new("server")
                 .about("Starts an instance of the server")

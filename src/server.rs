@@ -1,9 +1,13 @@
-use crate::orderbook::{
-    Empty,
-    Summary,
-    orderbook_aggregator_server::{
-        OrderbookAggregator,
-        OrderbookAggregatorServer,
+use crate::{
+    binance::run_binance,
+    bitstamp::run_bitstamp,
+    orderbook::{
+        Empty,
+        Summary,
+        orderbook_aggregator_server::{
+            OrderbookAggregator,
+            OrderbookAggregatorServer,
+        },
     },
 };
 use futures_channel;
@@ -24,7 +28,6 @@ use tonic::{
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use crate::binance::run_binance;
 
 #[derive(Default)]
 pub struct OrderbookAggregatorImpl {}
@@ -76,12 +79,13 @@ pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let (summary_sender, summary_receiver) = tokio::sync::mpsc::unbounded_channel();
 
     let res = tokio::try_join!(
-        run_binance(summary_sender, "ethbtc", 10),
+        run_binance(summary_sender.clone(), "ethbtc", 10),
+        run_bitstamp(summary_sender, "ethbtc", 10),
         run_grpc_server(port),
     );
 
     match res {
-        Ok((first, second)) => {}
+        Ok((first, second, third)) => {}
         Err(err) => {
             println!("a problem occurred: {}", err);
         }
