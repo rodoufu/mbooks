@@ -4,6 +4,7 @@ mod bitstamp;
 mod orderbook;
 mod client;
 mod server;
+mod merger;
 
 use clap::{
     arg,
@@ -36,8 +37,8 @@ enum Commands {
         port: u16,
         /// The depth of the book
         #[arg(short, long, default_value = "10")]
-        depth: u16,
-        /// lists test values
+        depth: usize,
+        /// The symbol to be pulled from the websocket.
         #[arg(short, long, default_value = "eth/btc")]
         symbol: String,
     },

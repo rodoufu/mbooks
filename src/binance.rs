@@ -60,7 +60,7 @@ fn symbol_to_string(symbol: &Symbol) -> String {
 
 pub async fn run_binance(
     summary_tx: UnboundedSender<Summary>,
-    symbol: &Symbol, depth: u16,
+    symbol: &Symbol, depth: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let tracer = global::tracer("run_binance");
     let span = tracer.start("running binance");

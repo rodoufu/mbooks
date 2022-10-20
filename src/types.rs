@@ -1,3 +1,4 @@
+use crate::orderbook;
 use std::{
     fmt::{
         Display,
@@ -89,6 +90,16 @@ pub struct Level {
     pub quantity: f64,
 }
 
+impl Into<orderbook::Level> for &Level {
+    fn into(self) -> orderbook::Level {
+        orderbook::Level {
+            exchange: self.exchange.clone(),
+            price: self.price,
+            amount: self.quantity,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Summary {
     pub bids: Vec<Level>,
@@ -98,6 +109,16 @@ pub struct Summary {
 impl Summary {
     pub fn spread(&self) -> f64 {
         self.bids[0].price - self.asks[0].price
+    }
+}
+
+impl Into<orderbook::Summary> for Summary {
+    fn into(self) -> orderbook::Summary {
+        orderbook::Summary {
+            spread: self.spread(),
+            bids: self.bids.iter().map(|x| x.into()).collect(),
+            asks: self.asks.iter().map(|x| x.into()).collect(),
+        }
     }
 }
 

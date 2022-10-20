@@ -1,7 +1,6 @@
 use crate::{
     binance::run_binance,
-    bitstamp::run_bitstamp,
-    orderbook::{
+    bitstamp::run_bitstamp, orderbook::{
         Empty,
         Summary,
         orderbook_aggregator_server::{
@@ -9,6 +8,8 @@ use crate::{
             OrderbookAggregatorServer,
         },
     },
+    merger::OrderbookMerger,
+    orderbook,
     types::Symbol,
 };
 use opentelemetry::{
@@ -25,7 +26,10 @@ use tonic::{
     Response,
     Status,
 };
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{
+    self,
+    UnboundedReceiver,
+};
 use tokio_stream::wrappers::ReceiverStream;
 
 #[derive(Default)]
@@ -55,7 +59,9 @@ impl OrderbookAggregator for OrderbookAggregatorImpl {
     }
 }
 
-async fn run_grpc_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_grpc_server(
+    grpc_receiver: UnboundedReceiver<orderbook::Summary>, port: u16,
+) -> Result<(), Box<dyn std::error::Error>> {
     let tracer = global::tracer("run_server");
     let span = tracer.start(format!("running server at: {}", port));
     let cx = Context::current_with_span(span);
@@ -75,18 +81,24 @@ async fn run_grpc_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub async fn run_server(
-    port: u16, pair: Symbol, depth: u16,
+    port: u16, pair: Symbol, depth: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (summary_sender, summary_receiver) = tokio::sync::mpsc::unbounded_channel();
+    let (summary_sender, summary_receiver) = mpsc::unbounded_channel();
+    let (grpc_sender, grpc_receiver) = mpsc::unbounded_channel();
+
+    let mut merger = OrderbookMerger::new(
+        summary_receiver, grpc_sender, depth,
+    );
 
     let res = tokio::try_join!(
         run_binance(summary_sender.clone(), &pair, depth),
         run_bitstamp(summary_sender, &pair, depth),
-        run_grpc_server(port),
+        run_grpc_server(grpc_receiver, port),
+        merger.start(),
     );
 
     match res {
-        Ok((_, _, _)) => {}
+        Ok((_, _, _, _)) => {}
         Err(err) => {
             println!("a problem occurred: {}", err);
         }
