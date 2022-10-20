@@ -1,30 +1,23 @@
-use std::fmt::format;
-use url;
-use futures_channel;
-use futures_util::{
-    future,
-    pin_mut,
-    StreamExt,
+use crate::types::{
+    Level,
+    Symbol,
+    Summary,
+    WebsocketError,
 };
-use opentelemetry::{Context, global, Key};
-use opentelemetry::trace::{FutureExt, TraceContextExt, Tracer};
-use serde_derive::{
-    Deserialize,
-    Serialize,
-};
-use tokio::{
-    io::{
-        AsyncReadExt,
-        AsyncWriteExt,
+use futures_util::StreamExt;
+use opentelemetry::{
+    Context,
+    global,
+    Key,
+    trace::{
+        FutureExt,
+        TraceContextExt,
+        Tracer,
     },
-    sync::mpsc::UnboundedSender,
 };
-use tokio_tungstenite::{
-    connect_async,
-    tungstenite::protocol::Message,
-};
-use tokio_tungstenite::tungstenite::WebSocket;
-use crate::types::{Level, Symbol, Summary, WebsocketError};
+use serde_derive::Deserialize;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio_tungstenite::connect_async;
 
 #[derive(Debug, Deserialize)]
 struct DepthUpdate {
@@ -87,12 +80,12 @@ pub async fn run_binance(
         .await.expect("Failed to connect");
     println!("Binance WebSocket handshake has been successfully completed to {:?}", symbol);
 
-    let (write, read) = ws_stream.split();
+    let (_, read) = ws_stream.split();
 
     // let stdin_to_ws = stdin_rx.map(Ok).forward(write);
     read.for_each(|message| async {
         let message_data = message.unwrap().into_data();
-        let mut binance_parse: serde_json::Result<DepthUpdate> = serde_json::from_slice(
+        let binance_parse: serde_json::Result<DepthUpdate> = serde_json::from_slice(
             &message_data,
         );
 

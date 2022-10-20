@@ -1,24 +1,29 @@
-use url;
-use futures_channel;
-use futures_util::{future, pin_mut, SinkExt, StreamExt};
-use opentelemetry::{Context, global, Key};
-use opentelemetry::trace::{FutureExt, TraceContextExt, Tracer};
-use serde_derive::{
-    Deserialize,
-    Serialize,
+use crate::types::{
+    Level,
+    Symbol,
+    Summary,
+    WebsocketError,
 };
-use tokio::{
-    io::{
-        AsyncReadExt,
-        AsyncWriteExt,
+use futures_util::{
+    SinkExt,
+    StreamExt,
+};
+use opentelemetry::{
+    Context,
+    global,
+    Key,
+    trace::{
+        FutureExt,
+        TraceContextExt,
+        Tracer,
     },
-    sync::mpsc::UnboundedSender,
 };
+use serde_derive::Deserialize;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::protocol::Message,
 };
-use crate::types::{Level, Symbol, Summary, WebsocketError};
 
 #[derive(Debug, Deserialize)]
 struct Data {
@@ -78,7 +83,7 @@ pub async fn run_bitstamp(
 
     let connect_addr = "wss://ws.bitstamp.net";
 
-    let url = url::Url::parse(&connect_addr)?;
+    let url = url::Url::parse(connect_addr)?;
 
     // let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
     // tokio::spawn(read_stdin(stdin_tx));
@@ -99,7 +104,7 @@ pub async fn run_bitstamp(
     // let stdin_to_ws = stdin_rx.map(Ok).forward(write);
     read.for_each(|message| async {
         let message_data = message.unwrap().into_data();
-        let mut bitstamp_parse: serde_json::Result<WebSocketEvent> = serde_json::from_slice(
+        let bitstamp_parse: serde_json::Result<WebSocketEvent> = serde_json::from_slice(
             &message_data,
         );
 
@@ -107,11 +112,17 @@ pub async fn run_bitstamp(
             Ok(event) => {
                 match event {
                     WebSocketEvent::Succeeded => {}
-                    WebSocketEvent::Data {data} => {
+                    WebSocketEvent::Data { data } => {
                         // depth_update.asks.resize(depth);
                         // depth_update.bids.resize(depth);
-                        match data.try_into() {
-                            Ok(summary) => {
+                        match TryInto::<Summary>::try_into(data) {
+                            Ok(mut summary) => {
+                                if summary.bids.len() > depth as usize {
+                                    summary.bids = summary.bids.as_slice()[..(depth as usize)].to_vec();
+                                }
+                                if summary.asks.len() > depth as usize {
+                                    summary.asks = summary.asks.as_slice()[..(depth as usize)].to_vec();
+                                }
                                 if let Err(err) = summary_tx.send(summary) {
                                     cx.span().add_event(
                                         "error information to the channel",
@@ -151,8 +162,16 @@ pub async fn run_bitstamp(
 }
 
 mod test {
-    use crate::bitstamp::{symbol_to_string, WebSocketEvent};
-    use crate::types::{Asset, Symbol};
+    use crate::{
+        bitstamp::{
+            symbol_to_string,
+            WebSocketEvent,
+        },
+        types::{
+            Asset,
+            Symbol,
+        },
+    };
 
     #[test]
     fn should_parse_a_subscribe() {

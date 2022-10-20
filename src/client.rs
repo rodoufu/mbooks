@@ -12,9 +12,7 @@ use opentelemetry::{
     },
     Context,
 };
-use tonic::{
-    Request,
-};
+use tonic::Request;
 
 pub async fn run_client(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let tracer = global::tracer("run_client");

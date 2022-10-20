@@ -1,4 +1,3 @@
-use clap::Parser;
 use crate::{
     binance::run_binance,
     bitstamp::run_bitstamp,
@@ -12,9 +11,7 @@ use crate::{
     },
     types::Symbol,
 };
-use futures_channel;
 use opentelemetry::{
-    Key,
     global,
     trace::{
         FutureExt,

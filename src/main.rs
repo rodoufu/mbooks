@@ -7,19 +7,19 @@ mod server;
 
 use clap::{
     arg,
-    Command,
+    Parser,
+    Subcommand,
 };
-use clap::{Parser, Subcommand};
 use crate::{
     client::run_client,
     server::run_server,
+    types::Symbol,
 };
-use opentelemetry::trace::TraceError;
 use opentelemetry::{
     global,
     sdk::trace as sdktrace,
+    trace::TraceError,
 };
-use crate::types::Symbol;
 
 fn init_tracer() -> Result<sdktrace::Tracer, TraceError> {
     opentelemetry_jaeger::new_agent_pipeline()
@@ -58,7 +58,7 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tracer = init_tracer()?;
+    let _ = init_tracer()?;
     let cli = Cli::parse();
 
     match cli.command {
@@ -70,9 +70,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Client { port, .. } => {
             // run_client(port).with_context(cx).await?;
             run_client(port).await?;
-        }
-        _ => {
-            // println!("verbose: {:?}", cli.verbose);
         }
     }
 

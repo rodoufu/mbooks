@@ -1,8 +1,10 @@
-use std::fmt::{
-    Display,
-    Formatter,
+use std::{
+    fmt::{
+        Display,
+        Formatter,
+    },
+    num::ParseFloatError,
 };
-use std::num::ParseFloatError;
 
 #[derive(Debug)]
 pub enum WebsocketError {
@@ -13,7 +15,7 @@ pub enum WebsocketError {
 
 impl Display for WebsocketError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{:?}", self)
     }
 }
 
@@ -70,8 +72,8 @@ impl TryFrom<String> for Symbol {
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let value = value.to_lowercase();
-        let pos_slash = value.find("/")
-            .map(|x| Ok(x))
+        let pos_slash = value.find('/')
+            .map(Ok)
             .unwrap_or_else(|| Err(WebsocketError::InvalidPair(value.clone())))?;
         Ok(Self {
             base: Asset::try_from(&value[..pos_slash])?,
@@ -80,7 +82,7 @@ impl TryFrom<String> for Symbol {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Level {
     pub exchange: String,
     pub price: f64,
@@ -100,7 +102,10 @@ impl Summary {
 }
 
 mod test {
-    use crate::types::{Asset, Symbol};
+    use crate::types::{
+        Asset,
+        Symbol,
+    };
 
     #[test]
     fn should_parse_ethbtc_pair() {
