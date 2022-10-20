@@ -1,3 +1,6 @@
+extern crate slog;
+extern crate slog_term;
+
 mod types;
 mod binance;
 mod bitstamp;
@@ -21,6 +24,18 @@ use opentelemetry::{
     sdk::trace as sdktrace,
     trace::TraceError,
 };
+use serde::Serialize;
+use slog::{
+    Drain,
+    Fuse,
+    Key,
+    Logger,
+    o,
+    OwnedKVList,
+    Record,
+    Serializer,
+};
+use std::{fmt, result};
 
 fn init_tracer() -> Result<sdktrace::Tracer, TraceError> {
     opentelemetry_jaeger::new_agent_pipeline()
@@ -59,6 +74,11 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
+    let logger = Logger::root(
+        slog_term::FullFormat::new(plain)
+            .build().fuse(), o!(),
+    );
     let _ = init_tracer()?;
     let cli = Cli::parse();
 
@@ -66,11 +86,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Server { port, symbol, depth, .. } => {
             // run_server(port).with_context(cx).await?;
             let symbol = Symbol::try_from(symbol)?;
-            run_server(port, symbol, depth).await?;
+            run_server(logger.clone(), port, symbol, depth).await?;
         }
         Commands::Client { port, .. } => {
             // run_client(port).with_context(cx).await?;
-            run_client(port).await?;
+            run_client(logger.clone(), port).await?;
         }
     }
 
