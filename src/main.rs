@@ -24,18 +24,11 @@ use opentelemetry::{
     sdk::trace as sdktrace,
     trace::TraceError,
 };
-use serde::Serialize;
 use slog::{
     Drain,
-    Fuse,
-    Key,
     Logger,
     o,
-    OwnedKVList,
-    Record,
-    Serializer,
 };
-use std::{fmt, result};
 
 fn init_tracer() -> Result<sdktrace::Tracer, TraceError> {
     opentelemetry_jaeger::new_agent_pipeline()

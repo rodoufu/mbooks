@@ -17,8 +17,10 @@ use opentelemetry::{
 };
 use serde_derive::Deserialize;
 use slog::{
+    debug,
     Logger,
     info,
+    o,
 };
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_tungstenite::connect_async;
@@ -70,7 +72,8 @@ pub async fn run_binance(
     let tracer = global::tracer("run_binance");
     let span = tracer.start("running binance");
     let cx = Context::current_with_span(span);
-    info!(log, "running binance"; "symbol" => format!("{:?}", symbol));
+    let log = log.new(o!("exchange" => "binance", "symbol" => format!("{:?}", symbol)));
+    info!(log, "running binance");
 
     let connect_addr = format!(
         "wss://stream.binance.com:9443/ws/{}@depth{}@100ms", symbol_to_string(symbol), depth,
@@ -85,12 +88,13 @@ pub async fn run_binance(
     let (ws_stream, _) = connect_async(url)
         .with_context(cx.clone())
         .await.expect("Failed to connect");
-    info!(log, "Binance WebSocket handshake has been successfully completed");
+    info!(log, "WebSocket handshake has been successfully completed");
 
     let (_, read) = ws_stream.split();
 
     // let stdin_to_ws = stdin_rx.map(Ok).forward(write);
     read.for_each(|message| async {
+        debug!(log, "websocket got message");
         let message_data = message.unwrap().into_data();
         let binance_parse: serde_json::Result<DepthUpdate> = serde_json::from_slice(
             &message_data,

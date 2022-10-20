@@ -20,6 +20,7 @@ use opentelemetry::{
 };
 use serde_derive::Deserialize;
 use slog::{
+    debug,
     Logger,
     info,
     o,
@@ -86,8 +87,8 @@ pub async fn run_bitstamp(
     let tracer = global::tracer("run_bitstamp");
     let span = tracer.start("running bitstamp");
     let cx = Context::current_with_span(span);
-    let log = log.new(o!("exchange" => "bitstamp"));
-    info!(log, "running bitstamp"; "symbol" => format!("{:?}", symbol));
+    let log = log.new(o!("exchange" => "bitstamp", "symbol" => format!("{:?}", symbol)));
+    info!(log, "running bitstamp");
 
     let connect_addr = "wss://ws.bitstamp.net";
 
@@ -100,7 +101,7 @@ pub async fn run_bitstamp(
     let (ws_stream, _) = connect_async(url)
         .with_context(cx.clone())
         .await.expect("Failed to connect");
-    info!(log, "bitstamp WebSocket handshake has been successfully completed");
+    info!(log, "WebSocket handshake has been successfully completed");
 
     let (mut write, read) = ws_stream.split();
     write.send(Message::Text(
@@ -112,7 +113,7 @@ pub async fn run_bitstamp(
 
     // let stdin_to_ws = stdin_rx.map(Ok).forward(write);
     read.for_each(|message| async {
-        info!(log, "websocket got message"; "exchange" => "bitstamp"; );
+        debug!(log, "websocket got message");
         let message_data = message.unwrap().into_data();
         let bitstamp_parse: serde_json::Result<WebSocketEvent> = serde_json::from_slice(
             &message_data,

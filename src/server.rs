@@ -10,10 +10,7 @@ use crate::{
         },
     },
     merger::OrderbookMerger,
-    types::{
-        Symbol,
-        WebsocketError,
-    },
+    types::Symbol,
 };
 use opentelemetry::{
     global,
@@ -40,10 +37,8 @@ use tokio::sync::mpsc::{
     Receiver,
     Sender,
     UnboundedReceiver,
-    UnboundedSender,
 };
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::codegen::Body;
 
 pub struct OrderbookAggregatorImpl {
     log: Logger,
@@ -73,6 +68,7 @@ impl OrderbookAggregatorImpl {
     }
 
     async fn listen_summaries(
+        log: Logger,
         targets: &Mutex<Vec<Sender<Result<Summary, Status>>>>,
         grpc_receiver: UnboundedReceiver<Summary>,
     ) -> Result<(), tonic::transport::Error> {
@@ -82,7 +78,7 @@ impl OrderbookAggregatorImpl {
             let mut resp = Vec::new();
             for target in it_targets.iter() {
                 if let Err(err) = target.send(Ok(summary.clone())).await {
-                    // consumer was dropped
+                    info!(log, "client dropped"; "error" => format!("{:?}", err));
                 } else {
                     resp.push(target.clone());
                 }
@@ -142,6 +138,7 @@ async fn run_grpc_server(
 
     tokio::try_join!(
         OrderbookAggregatorImpl::listen_summaries(
+            log.clone(),
             &targets,
             grpc_receiver,
         ),
@@ -162,7 +159,7 @@ pub async fn run_server(
     let (grpc_sender, grpc_receiver) = mpsc::unbounded_channel();
 
     let mut merger = OrderbookMerger::new(
-        summary_receiver, grpc_sender, depth,
+        log.clone(), summary_receiver, grpc_sender, depth,
     );
 
     match tokio::try_join!(

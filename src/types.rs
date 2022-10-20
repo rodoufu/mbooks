@@ -9,7 +9,6 @@ use std::{
 
 #[derive(Debug)]
 pub enum WebsocketError {
-    Grpc(tonic::transport::Error),
     InvalidAsset(String),
     InvalidPair(String),
     ParseError(ParseFloatError),
