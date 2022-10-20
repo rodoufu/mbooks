@@ -18,7 +18,7 @@ use tokio_tungstenite::{
     connect_async,
     tungstenite::protocol::Message,
 };
-use crate::types::{Level, Summary, WebsocketError};
+use crate::types::{Level, Symbol, Summary, WebsocketError};
 
 #[derive(Debug, Deserialize)]
 struct Data {
@@ -64,9 +64,13 @@ enum WebSocketEvent {
     Data { data: Data },
 }
 
+fn symbol_to_string(symbol: &Symbol) -> String {
+    format!("{}{}", symbol.base.to_string(), symbol.quote.to_string()).to_lowercase()
+}
+
 pub async fn run_bitstamp(
     summary_tx: UnboundedSender<Summary>,
-    symbol: &str, depth: u16,
+    symbol: &Symbol, depth: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let tracer = global::tracer("run_bitstamp");
     let span = tracer.start("running bitstamp");
@@ -82,11 +86,14 @@ pub async fn run_bitstamp(
     let (ws_stream, _) = connect_async(url)
         .with_context(cx.clone())
         .await.expect("Failed to connect");
-    println!("Bitstamp WebSocket handshake has been successfully completed");
+    println!("Bitstamp WebSocket handshake has been successfully completed to {:?}", symbol);
 
     let (mut write, read) = ws_stream.split();
     write.send(Message::Text(
-        format!("{{\"event\":\"bts:subscribe\",\"data\":{{\"channel\": \"order_book_{}\"}}}}", symbol))
+        format!(
+            "{{\"event\":\"bts:subscribe\",\"data\":{{\"channel\": \"order_book_{}\"}}}}",
+            symbol_to_string(symbol),
+        ))
     ).with_context(cx.clone()).await?;
 
     // let stdin_to_ws = stdin_rx.map(Ok).forward(write);
@@ -144,7 +151,8 @@ pub async fn run_bitstamp(
 }
 
 mod test {
-    use crate::bitstamp::{WebSocketEvent};
+    use crate::bitstamp::{symbol_to_string, WebSocketEvent};
+    use crate::types::{Asset, Symbol};
 
     #[test]
     fn should_parse_a_subscribe() {
@@ -177,5 +185,17 @@ mod test {
         } else {
             assert!(false, "not a subscribe");
         }
+    }
+
+    #[test]
+    fn should_convert_symbol() {
+        // Given
+        let symbol = Symbol { base: Asset::ETH, quote: Asset::BTC };
+
+        // When
+        let resp = symbol_to_string(&symbol);
+
+        // Then
+        assert_eq!("ethbtc", resp)
     }
 }

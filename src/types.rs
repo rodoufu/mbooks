@@ -1,3 +1,7 @@
+use std::fmt::{
+    Display,
+    Formatter,
+};
 use std::num::ParseFloatError;
 
 #[derive(Debug)]
@@ -7,11 +11,26 @@ pub enum WebsocketError {
     ParseError(ParseFloatError),
 }
 
+impl Display for WebsocketError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+impl std::error::Error for WebsocketError {}
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum Asset {
+    ADA,
     BTC,
-    USD,
+    DOT,
     ETH,
+    LINK,
+    LTC,
+    SOL,
+    USD,
+    USDC,
+    USDT,
 }
 
 impl TryFrom<&str> for Asset {
@@ -19,31 +38,44 @@ impl TryFrom<&str> for Asset {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
+            "ada" => Ok(Asset::ADA),
             "btc" => Ok(Asset::BTC),
-            "usd" => Ok(Asset::USD),
+            "dot" => Ok(Asset::DOT),
             "eth" => Ok(Asset::ETH),
+            "link" => Ok(Asset::LINK),
+            "ltc" => Ok(Asset::LTC),
+            "sol" => Ok(Asset::SOL),
+            "usd" => Ok(Asset::USD),
+            "usdt" => Ok(Asset::USDT),
+            "usdc" => Ok(Asset::USDC),
             _ => Err(WebsocketError::InvalidAsset(value.to_string())),
         }
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub struct Pair {
-    base: Asset,
-    quote: Asset,
+impl ToString for Asset {
+    fn to_string(&self) -> String {
+        format!("{:?}", self)
+    }
 }
 
-impl TryFrom<String> for Pair {
+#[derive(Debug, Eq, PartialEq)]
+pub struct Symbol {
+    pub base: Asset,
+    pub quote: Asset,
+}
+
+impl TryFrom<String> for Symbol {
     type Error = WebsocketError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let value = value.to_lowercase();
-        if value.len() != 6 {
-            return Err(WebsocketError::InvalidPair(value));
-        }
+        let pos_slash = value.find("/")
+            .map(|x| Ok(x))
+            .unwrap_or_else(|| Err(WebsocketError::InvalidPair(value.clone())))?;
         Ok(Self {
-            base: Asset::try_from(&value[0..3])?,
-            quote: Asset::try_from(&value[3..6])?,
+            base: Asset::try_from(&value[..pos_slash])?,
+            quote: Asset::try_from(&value[pos_slash + 1..])?,
         })
     }
 }
@@ -68,19 +100,19 @@ impl Summary {
 }
 
 mod test {
-    use crate::types::{Asset, Pair};
+    use crate::types::{Asset, Symbol};
 
     #[test]
     fn should_parse_ethbtc_pair() {
         // Given
-        let msg = "ethbtC".to_string();
+        let msg = "eth/btC".to_string();
 
         // When
-        let pair = Pair::try_from(msg);
+        let pair = Symbol::try_from(msg);
 
         // Then
         assert!(pair.is_ok());
         let pair = pair.ok().unwrap();
-        assert_eq!(Pair { base: Asset::ETH, quote: Asset::BTC }, pair);
+        assert_eq!(Symbol { base: Asset::ETH, quote: Asset::BTC }, pair);
     }
 }

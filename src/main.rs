@@ -9,6 +9,7 @@ use clap::{
     arg,
     Command,
 };
+use clap::{Parser, Subcommand};
 use crate::{
     client::run_client,
     server::run_server,
@@ -18,27 +19,7 @@ use opentelemetry::{
     global,
     sdk::trace as sdktrace,
 };
-
-fn cli() -> Command {
-    Command::new("mbooks")
-        .about("Orderbook merger CLI")
-        .subcommand_required(true)
-        .arg_required_else_help(true)
-        .allow_external_subcommands(true)
-        // TODO add param for the symbol
-        .subcommand(
-            Command::new("server")
-                .about("Starts an instance of the server")
-                .arg(arg!(<PORT> "The server port"))
-                .arg_required_else_help(true),
-        )
-        .subcommand(
-            Command::new("client")
-                .about("Starts an instance of the client")
-                .arg(arg!(<PORT> "The server port for the client to connect"))
-                .arg_required_else_help(true),
-        )
-}
+use crate::types::Symbol;
 
 fn init_tracer() -> Result<sdktrace::Tracer, TraceError> {
     opentelemetry_jaeger::new_agent_pipeline()
@@ -46,32 +27,52 @@ fn init_tracer() -> Result<sdktrace::Tracer, TraceError> {
         .install_batch(opentelemetry::runtime::Tokio)
 }
 
+#[derive(Subcommand)]
+enum Commands {
+    /// Runs the server
+    Server {
+        /// The server port
+        #[arg(short, long, default_value = "50501")]
+        port: u16,
+        /// The depth of the book
+        #[arg(short, long, default_value = "10")]
+        depth: u16,
+        /// lists test values
+        #[arg(short, long, default_value = "eth/btc")]
+        symbol: String,
+    },
+    /// Runs the client
+    Client {
+        /// lists test values
+        #[arg(short, long, default_value = "50501")]
+        port: u16,
+    },
+}
+
+#[derive(Parser)]
+#[command(author = "Rodolfo Araujo", version, about = "Orderbook merger CLI", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tracer = init_tracer()?;
-    let matches = cli().get_matches();
+    let cli = Cli::parse();
 
-    match matches.subcommand() {
-        Some(("server", sub_matches)) => {
-            let port_str = sub_matches.get_one::<String>("PORT").expect("port is required");
-            if let Ok(port) = port_str.parse::<u16>() {
-                // run_server(port).with_context(cx).await?;
-                run_server(port).await?;
-            } else {
-                println!("Invalid port: {}", port_str);
-            }
+    match cli.command {
+        Commands::Server { port, symbol, depth, .. } => {
+            // run_server(port).with_context(cx).await?;
+            let symbol = Symbol::try_from(symbol)?;
+            run_server(port, symbol, depth).await?;
         }
-        Some(("client", sub_matches)) => {
-            let port_str = sub_matches.get_one::<String>("PORT").expect("port is required");
-            if let Ok(port) = port_str.parse::<u16>() {
-                // run_client(port).with_context(cx).await?;
-                run_client(port).await?;
-            } else {
-                println!("Invalid port: {}", port_str);
-            }
+        Commands::Client { port, .. } => {
+            // run_client(port).with_context(cx).await?;
+            run_client(port).await?;
         }
         _ => {
-            println!("unexpected");
+            // println!("verbose: {:?}", cli.verbose);
         }
     }
 

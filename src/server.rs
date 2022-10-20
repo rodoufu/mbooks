@@ -1,3 +1,4 @@
+use clap::Parser;
 use crate::{
     binance::run_binance,
     bitstamp::run_bitstamp,
@@ -9,6 +10,7 @@ use crate::{
             OrderbookAggregatorServer,
         },
     },
+    types::Symbol,
 };
 use futures_channel;
 use opentelemetry::{
@@ -75,17 +77,19 @@ async fn run_grpc_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_server(
+    port: u16, pair: Symbol, depth: u16,
+) -> Result<(), Box<dyn std::error::Error>> {
     let (summary_sender, summary_receiver) = tokio::sync::mpsc::unbounded_channel();
 
     let res = tokio::try_join!(
-        run_binance(summary_sender.clone(), "ethbtc", 10),
-        run_bitstamp(summary_sender, "ethbtc", 10),
+        run_binance(summary_sender.clone(), &pair, depth),
+        run_bitstamp(summary_sender, &pair, depth),
         run_grpc_server(port),
     );
 
     match res {
-        Ok((first, second, third)) => {}
+        Ok((_, _, _)) => {}
         Err(err) => {
             println!("a problem occurred: {}", err);
         }

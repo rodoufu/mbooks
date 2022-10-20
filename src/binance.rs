@@ -1,3 +1,4 @@
+use std::fmt::format;
 use url;
 use futures_channel;
 use futures_util::{
@@ -22,7 +23,8 @@ use tokio_tungstenite::{
     connect_async,
     tungstenite::protocol::Message,
 };
-use crate::types::{Level, Summary, WebsocketError};
+use tokio_tungstenite::tungstenite::WebSocket;
+use crate::types::{Level, Symbol, Summary, WebsocketError};
 
 #[derive(Debug, Deserialize)]
 struct DepthUpdate {
@@ -59,16 +61,20 @@ impl TryInto<Summary> for DepthUpdate {
     }
 }
 
+fn symbol_to_string(symbol: &Symbol) -> String {
+    format!("{}{}", symbol.base.to_string(), symbol.quote.to_string()).to_lowercase()
+}
+
 pub async fn run_binance(
     summary_tx: UnboundedSender<Summary>,
-    symbol: &str, depth: u16,
+    symbol: &Symbol, depth: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let tracer = global::tracer("run_binance");
     let span = tracer.start("running binance");
     let cx = Context::current_with_span(span);
 
     let connect_addr = format!(
-        "wss://stream.binance.com:9443/ws/{}@depth{}@100ms", symbol, depth,
+        "wss://stream.binance.com:9443/ws/{}@depth{}@100ms", symbol_to_string(symbol), depth,
     );
 
     let url = url::Url::parse(&connect_addr)?;
@@ -79,7 +85,7 @@ pub async fn run_binance(
     let (ws_stream, _) = connect_async(url)
         .with_context(cx.clone())
         .await.expect("Failed to connect");
-    println!("Binance WebSocket handshake has been successfully completed");
+    println!("Binance WebSocket handshake has been successfully completed to {:?}", symbol);
 
     let (write, read) = ws_stream.split();
 
