@@ -493,4 +493,98 @@ mod test {
         assert_eq!(2, merger.asks.len());
         assert_eq!(2, merger.bids.len());
     }
+
+    #[tokio::test]
+    async fn should_replace_outdated_data_from_same_exchange() {
+        let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
+        let logger = Logger::root(
+            slog_term::FullFormat::new(plain)
+                .build().fuse(), o!(),
+        );
+        let (summary_sender, _summary_receiver) = mpsc::unbounded_channel();
+        let (test_sender, summary_receiver) = mpsc::unbounded_channel();
+        let mut merger = OrderbookMerger::new(
+            logger, summary_receiver, summary_sender, 2,
+        );
+
+        let binance = "binance".to_string();
+        let bitstamp = "bitstamp".to_string();
+        merger.bids = vec![
+            Level {
+                exchange: binance.clone(),
+                price: 1.0,
+                quantity: 10.0,
+            },
+            Level {
+                exchange: bitstamp.clone(),
+                price: 0.9,
+                quantity: 10.0,
+            },
+        ];
+        merger.asks = vec![
+            Level {
+                exchange: binance.clone(),
+                price: 2.0,
+                quantity: 10.0,
+            },
+            Level {
+                exchange: bitstamp.clone(),
+                price: 3.0,
+                quantity: 10.0,
+            },
+        ];
+
+        test_sender.send(Summary {
+            bids: vec![
+                Level {
+                    exchange: binance.clone(),
+                    price: 0.8,
+                    quantity: 10.0,
+                },
+            ],
+            asks: vec![
+                Level {
+                    exchange: binance.clone(),
+                    price: 4.0,
+                    quantity: 10.0,
+                },
+            ],
+        }).unwrap();
+
+        drop(test_sender);
+        merger.start().await.unwrap();
+
+        assert_eq!(2, merger.bids.len());
+        assert_eq!(
+            merger.bids,
+            vec![
+                Level {
+                    exchange: bitstamp.clone(),
+                    price: 0.9,
+                    quantity: 10.0,
+                },
+                Level {
+                    exchange: binance.clone(),
+                    price: 0.8,
+                    quantity: 10.0,
+                },
+            ],
+        );
+        assert_eq!(2, merger.asks.len());
+        assert_eq!(
+            merger.asks,
+            vec![
+                Level {
+                    exchange: bitstamp.clone(),
+                    price: 3.0,
+                    quantity: 10.0,
+                },
+                Level {
+                    exchange: binance.clone(),
+                    price: 4.0,
+                    quantity: 10.0,
+                },
+            ],
+        );
+    }
 }
