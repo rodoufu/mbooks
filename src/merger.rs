@@ -63,9 +63,14 @@ impl OrderbookMerger {
         info!(self.log, "starting merger");
 
         while let Some(summary) = self.summary_receiver.recv().with_context(cx.clone()).await {
-            // TODO maybe avoid copy
+            // Avoiding having to clone bids and asks from self
+            let mut asks = Vec::new();
+            std::mem::swap(&mut asks, &mut self.asks);
+            let mut bids = Vec::new();
+            std::mem::swap(&mut bids, &mut self.bids);
+
             (self.bids, self.asks) = OrderbookMerger::process_summary(
-                self.log.clone(), self.bids.clone(), self.asks.clone(), summary,
+                self.log.clone(), bids, asks, summary,
             );
             let summary_update = self.summary();
             self.summary_sender.send(summary_update.into()).unwrap();
@@ -327,5 +332,57 @@ mod test {
 
         assert_eq!(4, merger.asks.len());
         assert_eq!(4, merger.bids.len());
+    }
+
+    #[tokio::test]
+    async fn should_add_empty_summary_to_an_existing_orderbook() {
+        let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
+        let logger = Logger::root(
+            slog_term::FullFormat::new(plain)
+                .build().fuse(), o!(),
+        );
+        let (summary_sender, _summary_receiver) = mpsc::unbounded_channel();
+        let (test_sender, summary_receiver) = mpsc::unbounded_channel();
+        let mut merger = OrderbookMerger::new(
+            logger, summary_receiver, summary_sender, 2,
+        );
+
+        let binance = "binance".to_string();
+        let bitstamp = "bitstamp".to_string();
+        merger.bids = vec![
+            Level {
+                exchange: binance.clone(),
+                price: 1.0,
+                quantity: 10.0,
+            },
+            Level {
+                exchange: bitstamp.clone(),
+                price: 0.9,
+                quantity: 10.0,
+            },
+        ];
+        merger.asks = vec![
+            Level {
+                exchange: binance.clone(),
+                price: 2.0,
+                quantity: 10.0,
+            },
+            Level {
+                exchange: bitstamp.clone(),
+                price: 3.0,
+                quantity: 10.0,
+            },
+        ];
+
+        test_sender.send(Summary {
+            bids: Vec::new(),
+            asks: Vec::new(),
+        }).unwrap();
+
+        drop(test_sender);
+        merger.start().await.unwrap();
+
+        assert_eq!(2, merger.asks.len());
+        assert_eq!(2, merger.bids.len());
     }
 }
