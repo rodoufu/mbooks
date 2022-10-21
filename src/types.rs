@@ -83,7 +83,7 @@ impl TryFrom<String> for Symbol {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct Level {
     pub exchange: String,
     pub price: f64,
@@ -108,7 +108,11 @@ pub struct Summary {
 
 impl Summary {
     pub fn spread(&self) -> f64 {
-        self.bids[0].price - self.asks[0].price
+        if self.asks.is_empty() || self.bids.is_empty() {
+            f64::NAN
+        } else {
+            self.asks[0].price - self.bids[0].price
+        }
     }
 }
 

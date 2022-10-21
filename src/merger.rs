@@ -196,32 +196,33 @@ mod test {
             logger, summary_receiver, summary_sender, 2,
         );
 
+        let binance = "binance".to_string();
         test_sender.send(Summary {
             bids: vec![
                 Level {
-                    exchange: "binance".to_string(),
+                    exchange: binance.clone(),
                     price: 1.0,
                     quantity: 10.0,
                 },
                 Level {
-                    exchange: "binance".to_string(),
+                    exchange: binance.clone(),
                     price: 0.9,
                     quantity: 10.0,
                 },
             ],
             asks: vec![
                 Level {
-                    exchange: "binance".to_string(),
+                    exchange: binance.clone(),
                     price: 2.0,
                     quantity: 10.0,
                 },
                 Level {
-                    exchange: "binance".to_string(),
+                    exchange: binance.clone(),
                     price: 3.0,
                     quantity: 10.0,
                 },
                 Level {
-                    exchange: "binance".to_string(),
+                    exchange: binance.clone(),
                     price: 4.0,
                     quantity: 10.0,
                 },
@@ -231,7 +232,44 @@ mod test {
         merger.start().await.unwrap();
 
         assert_eq!(3, merger.asks.len());
+        assert_eq!(
+            merger.asks,
+            vec![
+                Level {
+                    exchange: binance.clone(),
+                    price: 2.0,
+                    quantity: 10.0,
+                },
+                Level {
+                    exchange: binance.clone(),
+                    price: 3.0,
+                    quantity: 10.0,
+                },
+                Level {
+                    exchange: binance.clone(),
+                    price: 4.0,
+                    quantity: 10.0,
+                },
+            ],
+        );
+
         assert_eq!(2, merger.bids.len());
+        assert_eq!(
+            merger.bids,
+            vec![
+                Level {
+                    exchange: binance.clone(),
+                    price: 1.0,
+                    quantity: 10.0,
+                },
+                Level {
+                    exchange: binance.clone(),
+                    price: 0.9,
+                    quantity: 10.0,
+                },
+            ],
+        );
+        assert_eq!(1.0, merger.summary().spread());
     }
 
     #[tokio::test]
@@ -305,24 +343,24 @@ mod test {
             bids: vec![
                 Level {
                     exchange: bitstamp.clone(),
-                    price: 1.1,
+                    price: 1.11,
                     quantity: 10.0,
                 },
                 Level {
                     exchange: bitstamp.clone(),
-                    price: 1.05,
+                    price: 1.051,
                     quantity: 10.0,
                 },
             ],
             asks: vec![
                 Level {
                     exchange: bitstamp.clone(),
-                    price: 2.1,
+                    price: 2.11,
                     quantity: 10.0,
                 },
                 Level {
                     exchange: bitstamp.clone(),
-                    price: 3.1,
+                    price: 3.11,
                     quantity: 10.0,
                 },
             ],
@@ -330,8 +368,95 @@ mod test {
         drop(test_sender);
         merger.start().await.unwrap();
 
-        assert_eq!(4, merger.asks.len());
         assert_eq!(4, merger.bids.len());
+        assert_eq!(
+            merger.bids,
+            vec![
+                Level {
+                    exchange: bitstamp.clone(),
+                    price: 1.11,
+                    quantity: 10.0,
+                },
+                Level {
+                    exchange: binance.clone(),
+                    price: 1.1,
+                    quantity: 10.0,
+                },
+                Level {
+                    exchange: bitstamp.clone(),
+                    price: 1.051,
+                    quantity: 10.0,
+                },
+                Level {
+                    exchange: binance.clone(),
+                    price: 1.05,
+                    quantity: 10.0,
+                },
+            ],
+        );
+
+        assert_eq!(4, merger.asks.len());
+        assert_eq!(
+            merger.asks,
+            vec![
+                Level {
+                    exchange: binance.clone(),
+                    price: 2.1,
+                    quantity: 10.0,
+                },
+                Level {
+                    exchange: bitstamp.clone(),
+                    price: 2.11,
+                    quantity: 10.0,
+                },
+                Level {
+                    exchange: binance.clone(),
+                    price: 3.1,
+                    quantity: 10.0,
+                },
+                Level {
+                    exchange: bitstamp.clone(),
+                    price: 3.11,
+                    quantity: 10.0,
+                },
+            ],
+        );
+
+        let summary = merger.summary();
+        assert_eq!(0.99, summary.spread());
+        assert_eq!(2, summary.bids.len());
+        assert_eq!(
+            summary.bids,
+            vec![
+                Level {
+                    exchange: bitstamp.clone(),
+                    price: 1.11,
+                    quantity: 10.0,
+                },
+                Level {
+                    exchange: binance.clone(),
+                    price: 1.1,
+                    quantity: 10.0,
+                },
+            ],
+        );
+
+        assert_eq!(2, summary.asks.len());
+        assert_eq!(
+            summary.asks,
+            vec![
+                Level {
+                    exchange: binance.clone(),
+                    price: 2.1,
+                    quantity: 10.0,
+                },
+                Level {
+                    exchange: bitstamp.clone(),
+                    price: 2.11,
+                    quantity: 10.0,
+                },
+            ],
+        );
     }
 
     #[tokio::test]
