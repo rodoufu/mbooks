@@ -52,9 +52,9 @@ enum Commands {
     },
     /// Runs the client
     Client {
-        /// lists test values
-        #[arg(short, long, default_value = "50501")]
-        port: u16,
+        /// Address of the server to connect to.
+        #[arg(short, long, default_value = "http://[::1]:50501")]
+        address: String,
     },
 }
 
@@ -81,9 +81,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let symbol = Symbol::try_from(symbol)?;
             run_server(logger.clone(), port, symbol, depth).await?;
         }
-        Commands::Client { port, .. } => {
+        Commands::Client { address, .. } => {
             // run_client(port).with_context(cx).await?;
-            run_client(logger.clone(), port).await?;
+            run_client(logger.clone(), address).await?;
         }
     }
 

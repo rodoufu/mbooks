@@ -18,12 +18,11 @@ use slog::{
 };
 use tonic::Request;
 
-pub async fn run_client(log: Logger, port: u16) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_client(log: Logger, address: String) -> Result<(), Box<dyn std::error::Error>> {
     let tracer = global::tracer("run_client");
-    let span = tracer.start(format!("running client at: {}", port));
+    let span = tracer.start(format!("running client at: {}", address));
     let cx = Context::current_with_span(span);
 
-    let address = format!("http://[::1]:{}", port);
     info!(log, "starting client"; "address" => &address);
     let mut client = OrderbookAggregatorClient::connect(
         address,
