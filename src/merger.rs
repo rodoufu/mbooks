@@ -89,11 +89,18 @@ impl OrderbookMerger {
             return (bids, asks);
         }
 
+        let mut summary = summary;
+        // Avoiding having to clone bids and asks from self
+        let mut summary_asks = Vec::new();
+        std::mem::swap(&mut summary_asks, &mut summary.asks);
+        let mut summary_bids = Vec::new();
+        std::mem::swap(&mut summary_bids, &mut summary.bids);
+
         let (bids, exchange_bids) = Self::process_summary_asks_bids(
-            &summary.bids, bids, -1.0,
+            summary_bids, bids, -1.0,
         );
         let (asks, exchange_aks) = Self::process_summary_asks_bids(
-            &summary.asks, asks, 1.0,
+            summary_asks, asks, 1.0,
         );
 
         info!(
@@ -106,51 +113,70 @@ impl OrderbookMerger {
     }
 
     fn process_summary_asks_bids(
-        summary_asks_bids: &Vec<Level>, asks_bids: Vec<Level>, multiplier: f64,
+        summary_asks_bids: Vec<Level>, asks_bids: Vec<Level>, multiplier: f64,
     ) -> (Vec<Level>, Option<String>) {
         if summary_asks_bids.is_empty() {
             return (asks_bids, None);
         }
 
-        let mut resp = Vec::new();
         let mut idx_asks_bids = 0;
         let mut idx_summary = 0;
+        let mut idx_resp = 0;
+
+        let mut asks_bids = asks_bids;
+        let mut summary_asks_bids = summary_asks_bids;
+
+        let exchange = summary_asks_bids[0].exchange.clone();
+        let count_exchange = asks_bids.iter()
+            .filter(|x| x.exchange == exchange).count();
+
+        let mut resp = Vec::with_capacity(
+            asks_bids.len() - count_exchange + summary_asks_bids.len(),
+        );
+        for _ in 0..resp.capacity() {
+            resp.push(Level {
+                exchange: "".to_string(),
+                price: 0.0,
+                quantity: 0.0,
+            });
+        }
 
         while idx_asks_bids < asks_bids.len() && idx_summary < summary_asks_bids.len() {
             // Ignoring outdated information already in the orderbook for this exchange
-            if asks_bids[idx_asks_bids].exchange == summary_asks_bids[0].exchange {
+            if asks_bids[idx_asks_bids].exchange == exchange {
                 idx_asks_bids += 1;
                 continue;
             }
 
             if asks_bids[idx_asks_bids].price * multiplier < summary_asks_bids[idx_summary].price * multiplier {
-                // TODO maybe I can save the clone
-                resp.push(asks_bids[idx_asks_bids].clone());
+                std::mem::swap(&mut resp[idx_resp], &mut asks_bids[idx_asks_bids]);
                 idx_asks_bids += 1;
+                idx_resp += 1;
             } else {
-                resp.push(summary_asks_bids[idx_summary].clone());
+                std::mem::swap(&mut resp[idx_resp], &mut summary_asks_bids[idx_summary]);
                 idx_summary += 1;
+                idx_resp += 1;
             }
         }
 
         while idx_asks_bids < asks_bids.len() {
             // Ignoring outdated information already in the orderbook for this exchange
-            if asks_bids[idx_asks_bids].exchange == summary_asks_bids[0].exchange {
+            if asks_bids[idx_asks_bids].exchange == exchange {
                 idx_asks_bids += 1;
                 continue;
             }
-            // TODO maybe I can save the clone
-            resp.push(asks_bids[idx_asks_bids].clone());
+            std::mem::swap(&mut resp[idx_resp], &mut asks_bids[idx_asks_bids]);
             idx_asks_bids += 1;
+            idx_resp += 1;
         }
 
         while idx_summary < summary_asks_bids.len() {
-            // TODO maybe I can save the clone
-            resp.push(summary_asks_bids[idx_summary].clone());
+            std::mem::swap(&mut resp[idx_resp], &mut summary_asks_bids[idx_summary]);
             idx_summary += 1;
+            idx_resp += 1;
         }
 
-        (resp, Some(summary_asks_bids[0].exchange.clone()))
+        (resp, Some(exchange.clone()))
     }
 }
 
