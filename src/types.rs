@@ -102,7 +102,7 @@ impl Into<orderbook::Level> for &Level {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Summary {
     pub bids: Vec<Level>,
     pub asks: Vec<Level>,

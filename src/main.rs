@@ -1,20 +1,11 @@
-extern crate slog;
-extern crate slog_term;
-
-mod types;
-mod binance;
-mod bitstamp;
-mod orderbook;
-mod client;
-mod server;
-mod merger;
+extern crate mbooks;
 
 use clap::{
     arg,
     Parser,
     Subcommand,
 };
-use crate::{
+use mbooks::{
     client::run_client,
     server::run_server,
     types::Symbol,
