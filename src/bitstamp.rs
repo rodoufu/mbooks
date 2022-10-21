@@ -95,9 +95,6 @@ pub async fn run_bitstamp(
     let url = url::Url::parse(connect_addr)?;
     info!(log, "bitstamp url"; "url" => format!("{:?}", url));
 
-    // let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
-    // tokio::spawn(read_stdin(stdin_tx));
-
     let (ws_stream, _) = connect_async(url)
         .with_context(cx.clone())
         .await.expect("Failed to connect");
@@ -111,7 +108,6 @@ pub async fn run_bitstamp(
         ))
     ).with_context(cx.clone()).await?;
 
-    // let stdin_to_ws = stdin_rx.map(Ok).forward(write);
     read.for_each(|message| async {
         debug!(log, "websocket got message");
         let message_data = message.unwrap().into_data();
@@ -123,17 +119,17 @@ pub async fn run_bitstamp(
             Ok(event) => {
                 match event {
                     WebSocketEvent::Succeeded => {}
-                    WebSocketEvent::Data { data } => {
-                        // depth_update.asks.resize(depth);
-                        // depth_update.bids.resize(depth);
+                    WebSocketEvent::Data { mut data } => {
+                        // Keeping only the updates within the depth
+                        if data.bids.len() > depth as usize {
+                            data.bids = data.bids.as_slice()[..(depth as usize)].to_vec();
+                        }
+                        if data.asks.len() > depth as usize {
+                            data.asks = data.asks.as_slice()[..(depth as usize)].to_vec();
+                        }
+
                         match TryInto::<Summary>::try_into(data) {
-                            Ok(mut summary) => {
-                                if summary.bids.len() > depth as usize {
-                                    summary.bids = summary.bids.as_slice()[..(depth as usize)].to_vec();
-                                }
-                                if summary.asks.len() > depth as usize {
-                                    summary.asks = summary.asks.as_slice()[..(depth as usize)].to_vec();
-                                }
+                            Ok(summary) => {
                                 if let Err(err) = summary_tx.send(summary) {
                                     cx.span().add_event(
                                         "error information to the channel",
@@ -167,8 +163,6 @@ pub async fn run_bitstamp(
         }
     }).with_context(cx.clone()).await;
 
-    // pin_mut!(stdin_to_ws, ws_to_stdout)
-    // future::select(stdin_to_ws, ws_to_stdout).await;
     Ok(())
 }
 

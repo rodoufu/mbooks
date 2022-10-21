@@ -82,8 +82,6 @@ pub async fn run_binance(
     let url = url::Url::parse(&connect_addr)?;
     info!(log, "binance url"; "url" => format!("{:?}", url));
 
-    // let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
-    // tokio::spawn(read_stdin(stdin_tx));
 
     let (ws_stream, _) = connect_async(url)
         .with_context(cx.clone())
@@ -92,7 +90,6 @@ pub async fn run_binance(
 
     let (_, read) = ws_stream.split();
 
-    // let stdin_to_ws = stdin_rx.map(Ok).forward(write);
     read.for_each(|message| async {
         debug!(log, "websocket got message");
         let message_data = message.unwrap().into_data();
@@ -102,8 +99,6 @@ pub async fn run_binance(
 
         match binance_parse {
             Ok(depth_update) => {
-                // depth_update.asks.resize(depth);
-                // depth_update.bids.resize(depth);
                 match depth_update.try_into() {
                     Ok(summary) => {
                         if let Err(err) = summary_tx.send(summary) {
@@ -137,10 +132,43 @@ pub async fn run_binance(
         }
     }).with_context(cx.clone()).await;
 
-    // pin_mut!(stdin_to_ws, ws_to_stdout)
-    // future::select(stdin_to_ws, ws_to_stdout).await;
     Ok(())
 }
 
-// TODO add unit tests
-//{"lastUpdateId":6062044077,"bids":[["0.06754400","31.99050000"],["0.06754300","4.60890000"],["0.06754200","0.00610000"],["0.06754100","0.02340000"],["0.06754000","10.47460000"],["0.06753900","89.02020000"],["0.06753800","0.80470000"],["0.06753700","1.10160000"],["0.06753600","3.80110000"],["0.06753500","13.33860000"]],"asks":[["0.06754500","27.06160000"],["0.06754600","5.45080000"],["0.06754700","0.03340000"],["0.06754800","0.00610000"],["0.06754900","10.02670000"],["0.06755000","55.60590000"],["0.06755100","0.00610000"],["0.06755300","0.02340000"],["0.06755400","0.00610000"],["0.06755600","0.20880000"]]}
+mod test {
+    use crate::{
+        binance::{
+            symbol_to_string,
+            DepthUpdate,
+        },
+        types::{
+            Asset,
+            Symbol,
+        },
+    };
+
+    #[test]
+    fn should_parse_data() {
+        // Given
+        let msg = r#"{"lastUpdateId":6062044077,"bids":[["0.06754400","31.99050000"],["0.06754300","4.60890000"]],"asks":[["0.06754500","27.06160000"],["0.06754600","5.45080000"],["0.06754700","0.03340000"]]}"#;
+
+        // When
+        let resp: DepthUpdate = serde_json::from_str(msg).unwrap();
+
+        // Then
+        assert_eq!(2, resp.bids.len());
+        assert_eq!(3, resp.asks.len());
+    }
+
+    #[test]
+    fn should_convert_symbol() {
+        // Given
+        let symbol = Symbol { base: Asset::ETH, quote: Asset::BTC };
+
+        // When
+        let resp = symbol_to_string(&symbol);
+
+        // Then
+        assert_eq!("ethbtc", resp)
+    }
+}
