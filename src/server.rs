@@ -26,17 +26,19 @@ use slog::{
     Logger,
     info,
 };
-use std::sync::Mutex;
 use tonic::{
     transport::Server,
     Response,
     Status,
 };
-use tokio::sync::mpsc::{
-    self,
-    Receiver,
-    Sender,
-    UnboundedReceiver,
+use tokio::sync::{
+    mpsc::{
+        self,
+        Receiver,
+        Sender,
+        UnboundedReceiver,
+    },
+    Mutex,
 };
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -60,9 +62,9 @@ impl OrderbookAggregatorImpl {
         targets: &Mutex<Vec<Sender<Result<Summary, Status>>>>,
         clients_to_connect_receiver: &Mutex<Receiver<Sender<Result<Summary, Status>>>>,
     ) -> Result<(), tonic::transport::Error> {
-        let mut clients_to_connect_receiver = clients_to_connect_receiver.lock().unwrap();
+        let mut clients_to_connect_receiver = clients_to_connect_receiver.lock().await;
         while let Some(client_to_connect) = clients_to_connect_receiver.recv().await {
-            targets.lock().unwrap().push(client_to_connect);
+            targets.lock().await.push(client_to_connect);
         }
         Ok(())
     }
@@ -74,7 +76,7 @@ impl OrderbookAggregatorImpl {
     ) -> Result<(), tonic::transport::Error> {
         let mut grpc_receiver = grpc_receiver;
         while let Some(summary) = grpc_receiver.recv().await {
-            let mut it_targets = targets.lock().unwrap();
+            let mut it_targets = targets.lock().await;
             let mut resp = Vec::new();
             for target in it_targets.iter() {
                 if let Err(err) = target.send(Ok(summary.clone())).await {

@@ -51,8 +51,8 @@ impl OrderbookMerger {
 
     fn summary(&self) -> types::Summary {
         types::Summary {
-            bids: self.bids.iter().take(self.depth).map(|x| x.clone()).collect(),
-            asks: self.asks.iter().take(self.depth).map(|x| x.clone()).collect(),
+            bids: self.bids.iter().take(self.depth).cloned().collect(),
+            asks: self.asks.iter().take(self.depth).cloned().collect(),
         }
     }
 
@@ -168,6 +168,7 @@ impl OrderbookMerger {
     }
 }
 
+#[cfg(test)]
 mod test {
     use crate::{
         merger::OrderbookMerger,

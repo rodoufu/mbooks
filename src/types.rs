@@ -23,6 +23,7 @@ impl Display for WebsocketError {
 impl std::error::Error for WebsocketError {}
 
 #[derive(Debug, Eq, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum Asset {
     ADA,
     BTC,
@@ -90,6 +91,7 @@ pub struct Level {
     pub quantity: f64,
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<orderbook::Level> for &Level {
     fn into(self) -> orderbook::Level {
         orderbook::Level {
@@ -116,6 +118,7 @@ impl Summary {
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<orderbook::Summary> for Summary {
     fn into(self) -> orderbook::Summary {
         orderbook::Summary {
@@ -126,6 +129,7 @@ impl Into<orderbook::Summary> for Summary {
     }
 }
 
+#[cfg(test)]
 mod test {
     use crate::types::{
         Asset,

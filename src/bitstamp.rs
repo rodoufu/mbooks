@@ -166,6 +166,7 @@ pub async fn run_bitstamp(
     Ok(())
 }
 
+#[cfg(test)]
 mod test {
     use crate::{
         bitstamp::{

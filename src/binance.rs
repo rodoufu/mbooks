@@ -135,6 +135,7 @@ pub async fn run_binance(
     Ok(())
 }
 
+#[cfg(test)]
 mod test {
     use crate::{
         binance::{
