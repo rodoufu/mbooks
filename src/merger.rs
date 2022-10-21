@@ -70,7 +70,7 @@ impl OrderbookMerger {
             let mut bids = Vec::new();
             std::mem::swap(&mut bids, &mut self.bids);
 
-            (self.bids, self.asks) = OrderbookMerger::process_summary(
+            (self.bids, self.asks) = Self::process_summary(
                 self.log.clone(), bids, asks, summary,
             );
 
@@ -85,37 +85,44 @@ impl OrderbookMerger {
     fn process_summary(
         log: Logger, bids: Vec<Level>, asks: Vec<Level>, summary: types::Summary,
     ) -> (Vec<Level>, Vec<Level>) {
-        let mut bids = bids;
-        let mut asks = asks;
-
         if summary.asks.is_empty() && summary.bids.is_empty() {
             return (bids, asks);
         }
-        let mut exchange = "".to_string();
-        let _: Vec<_> = summary.asks.iter().take(1)
-            .map(|x| exchange = x.exchange.clone()).collect();
-        let _: Vec<_> = summary.bids.iter().take(1)
-            .map(|x| exchange = x.exchange.clone()).collect();
-        info!(
-            log, "processing summary";
-            "exchange" => &exchange, "bids" => bids.len(), "asks" => asks.len()
+
+        let (bids, exchange_bids) = Self::process_summary_asks_bids(
+            &summary.bids, bids, -1.0,
+        );
+        let (asks, exchange_aks) = Self::process_summary_asks_bids(
+            &summary.asks, asks, 1.0,
         );
 
-        // Removing the old entries for the exchange we are receiving
-        bids.retain(|x| x.exchange != exchange);
-        asks.retain(|x| x.exchange != exchange);
+        info!(
+            log, "processing summary";
+            "exchange" => exchange_bids.unwrap_or_else(|| exchange_aks.unwrap()),
+            "bids" => bids.len(), "asks" => asks.len()
+        );
 
-        (Self::process_summary_bids(&summary, bids), Self::process_summary_asks(&summary, asks))
+        (bids, asks)
     }
 
     fn process_summary_asks_bids(
         summary_asks_bids: &Vec<Level>, asks_bids: Vec<Level>, multiplier: f64,
-    ) -> Vec<Level> {
+    ) -> (Vec<Level>, Option<String>) {
+        if summary_asks_bids.is_empty() {
+            return (asks_bids, None);
+        }
+
         let mut resp = Vec::new();
         let mut idx_asks_bids = 0;
         let mut idx_summary = 0;
 
         while idx_asks_bids < asks_bids.len() && idx_summary < summary_asks_bids.len() {
+            // Ignoring outdated information already in the orderbook for this exchange
+            if asks_bids[idx_asks_bids].exchange == summary_asks_bids[0].exchange {
+                idx_asks_bids += 1;
+                continue;
+            }
+
             if asks_bids[idx_asks_bids].price * multiplier < summary_asks_bids[idx_summary].price * multiplier {
                 // TODO maybe I can save the clone
                 resp.push(asks_bids[idx_asks_bids].clone());
@@ -127,6 +134,11 @@ impl OrderbookMerger {
         }
 
         while idx_asks_bids < asks_bids.len() {
+            // Ignoring outdated information already in the orderbook for this exchange
+            if asks_bids[idx_asks_bids].exchange == summary_asks_bids[0].exchange {
+                idx_asks_bids += 1;
+                continue;
+            }
             // TODO maybe I can save the clone
             resp.push(asks_bids[idx_asks_bids].clone());
             idx_asks_bids += 1;
@@ -138,15 +150,7 @@ impl OrderbookMerger {
             idx_summary += 1;
         }
 
-        resp
-    }
-
-    fn process_summary_asks(summary: &types::Summary, asks: Vec<Level>) -> Vec<Level> {
-        OrderbookMerger::process_summary_asks_bids(&summary.asks, asks, 1.0)
-    }
-
-    fn process_summary_bids(summary: &types::Summary, bids: Vec<Level>) -> Vec<Level> {
-        OrderbookMerger::process_summary_asks_bids(&summary.bids, bids, -1.0)
+        (resp, Some(summary_asks_bids[0].exchange.clone()))
     }
 }
 
