@@ -108,66 +108,45 @@ impl OrderbookMerger {
         (Self::process_summary_bids(&summary, bids), Self::process_summary_asks(&summary, asks))
     }
 
-    fn process_summary_asks(summary: &types::Summary, asks: Vec<Level>) -> Vec<Level> {
-        let mut resp_asks = Vec::new();
-        let mut idx_asks = 0;
-        let mut idx_s_asks = 0;
+    fn process_summary_asks_bids(
+        summary_asks_bids: &Vec<Level>, asks_bids: Vec<Level>, multiplier: f64,
+    ) -> Vec<Level> {
+        let mut resp = Vec::new();
+        let mut idx_asks_bids = 0;
+        let mut idx_summary = 0;
 
-        while idx_asks < asks.len() && idx_s_asks < summary.asks.len() {
-            if asks[idx_asks].price < summary.asks[idx_s_asks].price {
+        while idx_asks_bids < asks_bids.len() && idx_summary < summary_asks_bids.len() {
+            if asks_bids[idx_asks_bids].price * multiplier < summary_asks_bids[idx_summary].price * multiplier {
                 // TODO maybe I can save the clone
-                resp_asks.push(asks[idx_asks].clone());
-                idx_asks += 1;
+                resp.push(asks_bids[idx_asks_bids].clone());
+                idx_asks_bids += 1;
             } else {
-                resp_asks.push(summary.asks[idx_s_asks].clone());
-                idx_s_asks += 1;
+                resp.push(summary_asks_bids[idx_summary].clone());
+                idx_summary += 1;
             }
         }
 
-        while idx_asks < asks.len() {
+        while idx_asks_bids < asks_bids.len() {
             // TODO maybe I can save the clone
-            resp_asks.push(asks[idx_asks].clone());
-            idx_asks += 1;
+            resp.push(asks_bids[idx_asks_bids].clone());
+            idx_asks_bids += 1;
         }
 
-        while idx_s_asks < summary.asks.len() {
+        while idx_summary < summary_asks_bids.len() {
             // TODO maybe I can save the clone
-            resp_asks.push(summary.asks[idx_s_asks].clone());
-            idx_s_asks += 1;
+            resp.push(summary_asks_bids[idx_summary].clone());
+            idx_summary += 1;
         }
 
-        resp_asks
+        resp
+    }
+
+    fn process_summary_asks(summary: &types::Summary, asks: Vec<Level>) -> Vec<Level> {
+        OrderbookMerger::process_summary_asks_bids(&summary.asks, asks, 1.0)
     }
 
     fn process_summary_bids(summary: &types::Summary, bids: Vec<Level>) -> Vec<Level> {
-        let mut resp_bids = Vec::new();
-        let mut idx_bids = 0;
-        let mut idx_s_bids = 0;
-
-        while idx_bids < bids.len() && idx_s_bids < summary.bids.len() {
-            if bids[idx_bids].price > summary.bids[idx_s_bids].price {
-                // TODO maybe I can save the clone
-                resp_bids.push(bids[idx_bids].clone());
-                idx_bids += 1;
-            } else {
-                resp_bids.push(summary.bids[idx_s_bids].clone());
-                idx_s_bids += 1;
-            }
-        }
-
-        while idx_bids < bids.len() {
-            // TODO maybe I can save the clone
-            resp_bids.push(bids[idx_bids].clone());
-            idx_bids += 1;
-        }
-
-        while idx_s_bids < summary.bids.len() {
-            // TODO maybe I can save the clone
-            resp_bids.push(summary.bids[idx_s_bids].clone());
-            idx_s_bids += 1;
-        }
-
-        resp_bids
+        OrderbookMerger::process_summary_asks_bids(&summary.bids, bids, -1.0)
     }
 }
 
