@@ -120,8 +120,8 @@ async fn run_grpc_server(
     let span = tracer.start(format!("running server at: {}", port));
     let cx = Context::current_with_span(span);
 
-    let addr = format!("[::1]:{}", port).parse().unwrap();
-    // let orderbook = OrderbookAggregatorImpl::default();
+    let addr = format!("[::1]:{}", port).parse()
+        .map_err(|e| format!("problem parsing address: {}", e))?;
 
     let targets = Mutex::new(Vec::new());
     let (clients_to_connect_sender, clients_to_connect_receiver) = mpsc::channel(10);

@@ -21,17 +21,18 @@ use slog::{
     Logger,
     info,
     o,
+    error,
 };
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_tungstenite::connect_async;
 
 #[derive(Debug, Deserialize)]
-struct DepthUpdate {
+struct DepthSnapshot {
     bids: Vec<Vec<String>>,
     asks: Vec<Vec<String>>,
 }
 
-impl TryInto<Summary> for DepthUpdate {
+impl TryInto<Summary> for DepthSnapshot {
     type Error = WebsocketError;
 
     fn try_into(self) -> Result<Summary, Self::Error> {
@@ -92,42 +93,58 @@ pub async fn run_binance(
 
     read.for_each(|message| async {
         debug!(log, "websocket got message");
-        let message_data = message.unwrap().into_data();
-        let binance_parse: serde_json::Result<DepthUpdate> = serde_json::from_slice(
-            &message_data,
-        );
+        match message {
+            Ok(message_data) => {
+                let message_data = message_data.into_data();
+                let binance_parse: serde_json::Result<DepthSnapshot> = serde_json::from_slice(
+                    &message_data,
+                );
 
-        match binance_parse {
-            Ok(depth_update) => {
-                match depth_update.try_into() {
-                    Ok(summary) => {
-                        if let Err(err) = summary_tx.send(summary) {
-                            cx.span().add_event(
-                                "error information to the channel",
-                                vec![
-                                    Key::new("error").string(format!("{}", err)),
-                                ],
-                            );
+                match binance_parse {
+                    Ok(depth_update) => {
+                        match depth_update.try_into() {
+                            Ok(summary) => {
+                                if let Err(err) = summary_tx.send(summary) {
+                                    error!(
+                                        log, "error sending information to the channel";
+                                        "error" => format!("{}", err)
+                                    );
+                                    cx.span().add_event(
+                                        "error sending information to the channel",
+                                        vec![
+                                            Key::new("error").string(format!("{}", err)),
+                                        ],
+                                    );
+                                }
+                            }
+                            Err(err) => {
+                                error!(
+                                    log, "error converting WebSocket data to domain type";
+                                    "error" => format!("{}", err)
+                                );
+                                cx.span().add_event(
+                                    "error converting WebSocket data to domain type",
+                                    vec![
+                                        Key::new("error").string(format!("{:?}", err)),
+                                    ],
+                                );
+                            }
                         }
                     }
                     Err(err) => {
+                        error!(log, "error parsing WebSocket data"; "error" => format!("{}", err));
                         cx.span().add_event(
-                            "error converting WebSocket data to domain type",
+                            "error parsing WebSocket data",
                             vec![
-                                Key::new("error").string(format!("{:?}", err)),
+                                Key::new("message").string(format!("{:?}", message_data)),
+                                Key::new("error").string(format!("{}", err)),
                             ],
                         );
                     }
                 }
             }
             Err(err) => {
-                cx.span().add_event(
-                    "error parsing WebSocket data",
-                    vec![
-                        Key::new("message").string(format!("{:?}", message_data)),
-                        Key::new("error").string(format!("{}", err)),
-                    ],
-                );
+                error!(log, "problem fetching message"; "error" => format!("{}", err));
             }
         }
     }).with_context(cx.clone()).await;
@@ -140,7 +157,7 @@ mod test {
     use crate::{
         binance::{
             symbol_to_string,
-            DepthUpdate,
+            DepthSnapshot,
         },
         types::{
             Asset,
@@ -154,7 +171,7 @@ mod test {
         let msg = r#"{"lastUpdateId":6062044077,"bids":[["0.06754400","31.99050000"],["0.06754300","4.60890000"]],"asks":[["0.06754500","27.06160000"],["0.06754600","5.45080000"],["0.06754700","0.03340000"]]}"#;
 
         // When
-        let resp: DepthUpdate = serde_json::from_str(msg).unwrap();
+        let resp: DepthSnapshot = serde_json::from_str(msg).unwrap();
 
         // Then
         assert_eq!(2, resp.bids.len());

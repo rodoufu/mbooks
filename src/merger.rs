@@ -15,8 +15,9 @@ use opentelemetry::{
     },
 };
 use slog::{
-    Logger,
+    error,
     info,
+    Logger,
 };
 use tokio::sync::mpsc::{
     UnboundedReceiver,
@@ -72,8 +73,10 @@ impl OrderbookMerger {
             (self.bids, self.asks) = OrderbookMerger::process_summary(
                 self.log.clone(), bids, asks, summary,
             );
-            let summary_update = self.summary();
-            self.summary_sender.send(summary_update.into()).unwrap();
+
+            if let Err(err) = self.summary_sender.send(self.summary().into()) {
+                error!(self.log, "problem sending summary"; "error" => format!("{}", err));
+            }
         }
 
         Ok(())

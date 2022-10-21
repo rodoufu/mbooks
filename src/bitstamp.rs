@@ -21,6 +21,7 @@ use opentelemetry::{
 use serde_derive::Deserialize;
 use slog::{
     debug,
+    error,
     Logger,
     info,
     o,
@@ -110,55 +111,71 @@ pub async fn run_bitstamp(
 
     read.for_each(|message| async {
         debug!(log, "websocket got message");
-        let message_data = message.unwrap().into_data();
-        let bitstamp_parse: serde_json::Result<WebSocketEvent> = serde_json::from_slice(
-            &message_data,
-        );
+        match message {
+            Ok(message_data) => {
+                let message_data = message_data.into_data();
+                let bitstamp_parse: serde_json::Result<WebSocketEvent> = serde_json::from_slice(
+                    &message_data,
+                );
 
-        match bitstamp_parse {
-            Ok(event) => {
-                match event {
-                    WebSocketEvent::Succeeded => {}
-                    WebSocketEvent::Data { mut data } => {
-                        // Keeping only the updates within the depth
-                        if data.bids.len() > depth as usize {
-                            data.bids = data.bids.as_slice()[..(depth as usize)].to_vec();
-                        }
-                        if data.asks.len() > depth as usize {
-                            data.asks = data.asks.as_slice()[..(depth as usize)].to_vec();
-                        }
+                match bitstamp_parse {
+                    Ok(event) => {
+                        match event {
+                            WebSocketEvent::Succeeded => {}
+                            WebSocketEvent::Data { mut data } => {
+                                // Keeping only the updates within the depth
+                                if data.bids.len() > depth as usize {
+                                    data.bids = data.bids.as_slice()[..(depth as usize)].to_vec();
+                                }
+                                if data.asks.len() > depth as usize {
+                                    data.asks = data.asks.as_slice()[..(depth as usize)].to_vec();
+                                }
 
-                        match TryInto::<Summary>::try_into(data) {
-                            Ok(summary) => {
-                                if let Err(err) = summary_tx.send(summary) {
-                                    cx.span().add_event(
-                                        "error information to the channel",
-                                        vec![
-                                            Key::new("error").string(format!("{}", err)),
-                                        ],
-                                    );
+                                match TryInto::<Summary>::try_into(data) {
+                                    Ok(summary) => {
+                                        if let Err(err) = summary_tx.send(summary) {
+                                            error!(
+                                                log, "error information to the channel";
+                                                "error" => format!("{}", err)
+                                            );
+                                            cx.span().add_event(
+                                                "error information to the channel",
+                                                vec![
+                                                    Key::new("error").string(format!("{}", err)),
+                                                ],
+                                            );
+                                        }
+                                    }
+                                    Err(err) => {
+                                        error!(
+                                            log, "error converting WebSocket data to domain type";
+                                            "error" => format!("{}", err)
+                                        );
+                                        cx.span().add_event(
+                                            "error converting WebSocket data to domain type",
+                                            vec![
+                                                Key::new("error").string(format!("{:?}", err)),
+                                            ],
+                                        );
+                                    }
                                 }
                             }
-                            Err(err) => {
-                                cx.span().add_event(
-                                    "error converting WebSocket data to domain type",
-                                    vec![
-                                        Key::new("error").string(format!("{:?}", err)),
-                                    ],
-                                );
-                            }
                         }
+                    }
+                    Err(err) => {
+                        error!(log, "error parsing WebSocket data"; "error" => format!("{}", err));
+                        cx.span().add_event(
+                            "error parsing WebSocket data",
+                            vec![
+                                Key::new("message").string(format!("{:?}", message_data)),
+                                Key::new("error").string(format!("{}", err)),
+                            ],
+                        );
                     }
                 }
             }
             Err(err) => {
-                cx.span().add_event(
-                    "error parsing WebSocket data",
-                    vec![
-                        Key::new("message").string(format!("{:?}", message_data)),
-                        Key::new("error").string(format!("{}", err)),
-                    ],
-                );
+                error!(log, "problem fetching message"; "error" => format!("{}", err));
             }
         }
     }).with_context(cx.clone()).await;
