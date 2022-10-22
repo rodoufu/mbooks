@@ -31,9 +31,9 @@ fn init_tracer() -> Result<sdktrace::Tracer, TraceError> {
 enum Commands {
     /// Runs the server
     Server {
-        /// The server port
-        #[arg(short, long, default_value = "50501")]
-        port: u16,
+        /// Address for the server.
+        #[arg(short, long, default_value = "[::1]:50501")]
+        address: String,
         /// The depth of the book
         #[arg(short, long, default_value = "10")]
         depth: usize,
@@ -67,10 +67,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Server { port, symbol, depth, .. } => {
+        Commands::Server { address, symbol, depth, .. } => {
             // run_server(port).with_context(cx).await?;
             let symbol = Symbol::try_from(symbol)?;
-            run_server(logger.clone(), port, symbol, depth).await?;
+            run_server(logger.clone(), address, symbol, depth).await?;
         }
         Commands::Client { address, .. } => {
             // run_client(port).with_context(cx).await?;

@@ -114,21 +114,23 @@ impl OrderbookAggregator for OrderbookAggregatorImpl {
 
 async fn run_grpc_server(
     log: Logger,
-    grpc_receiver: UnboundedReceiver<Summary>, port: u16,
+    grpc_receiver: UnboundedReceiver<Summary>,
+    address: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let tracer = global::tracer("run_server");
-    let span = tracer.start(format!("running server at: {}", port));
+    let span = tracer.start(format!("running server at: {}", &address));
     let cx = Context::current_with_span(span);
+    info!(log, "starting server"; "address" => &address);
 
-    let addr = format!("[::1]:{}", port).parse()
-        .map_err(|e| format!("problem parsing address: {}", e))?;
+    let addr = address.parse()
+    .map_err(|e| format!("problem parsing address: {}", e))?;
 
     let targets = Mutex::new(Vec::new());
     let (clients_to_connect_sender, clients_to_connect_receiver) = mpsc::channel(10);
     let clients_to_connect_receiver = Mutex::new(clients_to_connect_receiver);
     let orderbook = OrderbookAggregatorImpl::new(
-        log.clone(),
-        clients_to_connect_sender,
+    log.clone(),
+    clients_to_connect_sender,
     );
 
     info!(log, "Orderbook server listening"; "address" => addr);
@@ -155,7 +157,7 @@ async fn run_grpc_server(
 }
 
 pub async fn run_server(
-    log: Logger, port: u16, pair: Symbol, depth: usize,
+    log: Logger, address: String, pair: Symbol, depth: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (summary_sender, summary_receiver) = mpsc::unbounded_channel();
     let (grpc_sender, grpc_receiver) = mpsc::unbounded_channel();
@@ -167,7 +169,7 @@ pub async fn run_server(
     match tokio::try_join!(
         run_binance(log.clone(), summary_sender.clone(), &pair, depth),
         run_bitstamp(log.clone(), summary_sender, &pair, depth),
-        run_grpc_server(log.clone(), grpc_receiver, port),
+        run_grpc_server(log.clone(), grpc_receiver, address),
         merger.start(),
     ) {
         Ok((_, _, _, _)) => {}

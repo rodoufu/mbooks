@@ -1,0 +1,12 @@
+version: "3.9"
+services:
+  mbooks_server:
+    build: .
+    entrypoint: "./mbooks server -a 0.0.0.0:50501"
+  mbooks_client:
+    build: .
+    deploy:
+      replicas: 10
+    entrypoint: "./mbooks client -a http://mbooks_server:50501"
+    depends_on:
+      - mbooks_server
