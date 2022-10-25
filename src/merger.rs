@@ -57,29 +57,44 @@ impl OrderbookMerger {
         }
     }
 
-    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn start(
+        &mut self,
+        shutdown_sender: tokio::sync::broadcast::Sender<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let tracer = global::tracer("OrderbookMerger");
         let span = tracer.start("OrderbookMerger");
         let cx = Context::current_with_span(span);
         info!(self.log, "starting merger");
 
-        while let Some(summary) = self.summary_receiver.recv().with_context(cx.clone()).await {
-            // Avoiding having to clone bids and asks from self
-            let mut asks = Vec::new();
-            std::mem::swap(&mut asks, &mut self.asks);
-            let mut bids = Vec::new();
-            std::mem::swap(&mut bids, &mut self.bids);
+        let mut shutdown_receiver = shutdown_sender.subscribe();
+        loop {
+            tokio::select! {
+                message = self.summary_receiver.recv().with_context(cx.clone()) => {
+                    if let Some (summary) = message {
+                        // Avoiding having to clone bids and asks from self
+                        let mut asks = Vec::new();
+                        std::mem::swap(&mut asks, &mut self.asks);
+                        let mut bids = Vec::new();
+                        std::mem::swap(&mut bids, &mut self.bids);
 
-            (self.bids, self.asks) = Self::process_summary(
-                self.log.clone(), bids, asks, summary,
-            );
+                        (self.bids, self.asks) = Self::process_summary(
+                            self.log.clone(), bids, asks, summary,
+                        );
 
-            if let Err(err) = self.summary_sender.send(self.summary().into()) {
-                error!(self.log, "problem sending summary"; "error" => format!("{}", err));
+                        if let Err(err) = self.summary_sender.send(self.summary().into()) {
+                            error!(self.log, "problem sending summary"; "error" => format!("{}", err));
+                        }
+                    } else {
+                        info!(self.log, "no more messages at Merger::start");
+                        return Ok(());
+                    }
+                }
+                _ = shutdown_receiver.recv() => {
+                    info!(self.log, "application is shutting down, closing merger");
+                    return Ok(());
+                }
             }
         }
-
-        Ok(())
     }
 
     fn process_summary(

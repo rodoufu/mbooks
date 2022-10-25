@@ -17,8 +17,13 @@ use slog::{
     info,
 };
 use tonic::Request;
+use tokio::sync::broadcast::Receiver;
 
-pub async fn run_client(log: Logger, address: String) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_client(
+    log: Logger,
+    shutdown_receiver: &mut Receiver<String>,
+    address: String,
+) -> Result<(), Box<dyn std::error::Error>> {
     let tracer = global::tracer("run_client");
     let span = tracer.start(format!("running client at: {}", address));
     let cx = Context::current_with_span(span);
@@ -32,11 +37,21 @@ pub async fn run_client(log: Logger, address: String) -> Result<(), Box<dyn std:
     let response = client.book_summary(Request::new(Empty {})).with_context(cx.clone()).await?;
     let mut inbound = response.into_inner();
 
-    while let Some(summary) = inbound.message().with_context(cx.clone()).await? {
-        cx.span().add_event("got summary", vec![Key::new("spread").f64(summary.spread)]);
-        info!(log, "got a summary"; "summary" => format!("{:?}", summary));
+    loop {
+        tokio::select! {
+            message = inbound.message().with_context(cx.clone()) => {
+                if let Some(summary) = message? {
+                    cx.span().add_event("got summary", vec![Key::new("spread").f64(summary.spread)]);
+                    info!(log, "got a summary"; "summary" => format!("{:?}", summary));
+                } else {
+                    info!(log, "no more messages");
+                    return Ok(());
+                }
+            }
+            _ = shutdown_receiver.recv() => {
+                info!(log, "application is shutting down, closing client");
+                return Ok(());
+            }
+        }
     }
-
-    info!(log, "finished processing stream");
-    Ok(())
 }

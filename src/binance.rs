@@ -67,6 +67,7 @@ fn symbol_to_string(symbol: &Symbol) -> String {
 
 pub async fn run_binance(
     log: Logger,
+    shutdown_receiver: tokio::sync::broadcast::Receiver<String>,
     summary_tx: UnboundedSender<Summary>,
     symbol: &Symbol, depth: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -89,67 +90,80 @@ pub async fn run_binance(
         .await.expect("Failed to connect");
     info!(log, "WebSocket handshake has been successfully completed");
 
-    let (_, read) = ws_stream.split();
+    let (_, mut read) = ws_stream.split();
 
-    read.for_each(|message| async {
-        debug!(log, "websocket got message");
-        match message {
-            Ok(message_data) => {
-                let message_data = message_data.into_data();
-                let binance_parse: serde_json::Result<DepthSnapshot> = serde_json::from_slice(
-                    &message_data,
-                );
+    let mut shutdown_receiver= shutdown_receiver;
 
-                match binance_parse {
-                    Ok(depth_update) => {
-                        match depth_update.try_into() {
-                            Ok(summary) => {
-                                if let Err(err) = summary_tx.send(summary) {
-                                    error!(
-                                        log, "error sending information to the channel";
-                                        "error" => format!("{}", err)
-                                    );
+    loop {
+        tokio::select! {
+            message = read.next() => {
+                if let Some(message) = message {
+                    debug!(log, "websocket got message");
+                    match message {
+                        Ok(message_data) => {
+                            let message_data = message_data.into_data();
+                            let binance_parse: serde_json::Result<DepthSnapshot> = serde_json::from_slice(
+                                &message_data,
+                            );
+
+                            match binance_parse {
+                                Ok(depth_update) => {
+                                    match depth_update.try_into() {
+                                        Ok(summary) => {
+                                            if let Err(err) = summary_tx.send(summary) {
+                                                error!(
+                                                    log, "error sending information to the channel";
+                                                    "error" => format!("{}", err)
+                                                );
+                                                cx.span().add_event(
+                                                    "error sending information to the channel",
+                                                    vec![
+                                                        Key::new("error").string(format!("{}", err)),
+                                                    ],
+                                                );
+                                            }
+                                        }
+                                        Err(err) => {
+                                            error!(
+                                                log, "error converting WebSocket data to domain type";
+                                                "error" => format!("{}", err)
+                                            );
+                                            cx.span().add_event(
+                                                "error converting WebSocket data to domain type",
+                                                vec![
+                                                    Key::new("error").string(format!("{:?}", err)),
+                                                ],
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(err) => {
+                                    error!(log, "error parsing WebSocket data"; "error" => format!("{}", err));
                                     cx.span().add_event(
-                                        "error sending information to the channel",
+                                        "error parsing WebSocket data",
                                         vec![
+                                            Key::new("message").string(format!("{:?}", message_data)),
                                             Key::new("error").string(format!("{}", err)),
                                         ],
                                     );
                                 }
                             }
-                            Err(err) => {
-                                error!(
-                                    log, "error converting WebSocket data to domain type";
-                                    "error" => format!("{}", err)
-                                );
-                                cx.span().add_event(
-                                    "error converting WebSocket data to domain type",
-                                    vec![
-                                        Key::new("error").string(format!("{:?}", err)),
-                                    ],
-                                );
-                            }
+                        }
+                        Err(err) => {
+                            error!(log, "problem fetching message"; "error" => format!("{}", err));
                         }
                     }
-                    Err(err) => {
-                        error!(log, "error parsing WebSocket data"; "error" => format!("{}", err));
-                        cx.span().add_event(
-                            "error parsing WebSocket data",
-                            vec![
-                                Key::new("message").string(format!("{:?}", message_data)),
-                                Key::new("error").string(format!("{}", err)),
-                            ],
-                        );
-                    }
+                } else {
+                    info!(log, "no more messages run_binance");
+                    return Ok(());
                 }
             }
-            Err(err) => {
-                error!(log, "problem fetching message"; "error" => format!("{}", err));
+            _ = shutdown_receiver.recv() => {
+                info!(log, "application is shutting down, closing run_binance");
+                return Ok(());
             }
         }
-    }).with_context(cx.clone()).await;
-
-    Ok(())
+    }
 }
 
 #[cfg(test)]

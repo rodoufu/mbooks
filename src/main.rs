@@ -17,18 +17,17 @@ use opentelemetry::{
 };
 use slog::{
     Drain,
+    info,
     Logger,
     o,
 };
+use tokio::{
+    signal,
+    sync::broadcast,
+};
 
-fn init_tracer() -> Result<sdktrace::Tracer, TraceError> {
-    opentelemetry_jaeger::new_agent_pipeline()
-        .with_service_name("mbooks")
-        .install_batch(opentelemetry::runtime::Tokio)
-}
-
-#[derive(Subcommand)]
-enum Commands {
+#[derive(Clone, Subcommand)]
+pub enum Command {
     /// Runs the server
     Server {
         /// Address for the server.
@@ -49,11 +48,17 @@ enum Commands {
     },
 }
 
-#[derive(Parser)]
+#[derive(Clone, Parser)]
 #[command(author = "Rodolfo Araujo", version, about = "Orderbook merger CLI", long_about = None)]
-struct Cli {
+pub struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    pub command: Command,
+}
+
+fn init_tracer() -> Result<sdktrace::Tracer, TraceError> {
+    opentelemetry_jaeger::new_agent_pipeline()
+        .with_service_name("mbooks")
+        .install_batch(opentelemetry::runtime::Tokio)
 }
 
 #[tokio::main]
@@ -63,20 +68,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         slog_term::FullFormat::new(plain)
             .build().fuse(), o!(),
     );
-    let _ = init_tracer()?;
-    let cli = Cli::parse();
+    let _tracer = init_tracer()?;
+    let (shutdown_sender, mut shutdown_receiver) = broadcast::channel(10);
 
-    match cli.command {
-        Commands::Server { address, symbol, depth, .. } => {
-            // run_server(port).with_context(cx).await?;
+    let log = logger.clone();
+    let spawn_shutdown_sender = shutdown_sender.clone();
+    let mut spawn_shutdown_receiver = shutdown_sender.subscribe();
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = signal::ctrl_c() => {
+                info!(log, "got kill signal, starting shutdown");
+                spawn_shutdown_sender.send("got kill signal, starting shutdown".to_string())
+                    .expect("problem sending shutdown message");
+            },
+            _ = spawn_shutdown_receiver.recv() => {
+                info!(log, "starting shutdown");
+            },
+        }
+        info!(log, "end of spawn signal listener");
+    });
+
+    let mut receiver = shutdown_sender.subscribe();
+    match Cli::parse().command.clone() {
+        Command::Server { address, symbol, depth, .. } => {
             let symbol = Symbol::try_from(symbol)?;
-            run_server(logger.clone(), address, symbol, depth).await?;
+            run_server(
+                logger.clone(), shutdown_sender.clone(),
+                address, symbol, depth,
+            ).await?;
         }
-        Commands::Client { address, .. } => {
-            // run_client(port).with_context(cx).await?;
-            run_client(logger.clone(), address).await?;
+        Command::Client { address, .. } => {
+            run_client(logger.clone(), &mut receiver, address).await?;
         }
-    }
+    };
+
+    drop(shutdown_sender); // Not necessary since it was moved
+
+    // Waiting for all the services to shut down
+    let _ = shutdown_receiver.recv().await;
 
     global::shutdown_tracer_provider();
     Ok(())

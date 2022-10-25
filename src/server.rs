@@ -42,15 +42,17 @@ use tokio::sync::{
 };
 use tokio_stream::wrappers::ReceiverStream;
 
+pub type ClientSubscription = Sender<Result<Summary, Status>>;
+
 pub struct OrderbookAggregatorImpl {
     log: Logger,
-    clients_to_connect_sender: Sender<Sender<Result<Summary, Status>>>,
+    clients_to_connect_sender: Sender<ClientSubscription>,
 }
 
 impl OrderbookAggregatorImpl {
     fn new(
         log: Logger,
-        clients_to_connect_sender: Sender<Sender<Result<Summary, Status>>>,
+        clients_to_connect_sender: Sender<ClientSubscription>,
     ) -> Self {
         Self {
             log,
@@ -59,36 +61,65 @@ impl OrderbookAggregatorImpl {
     }
 
     async fn listen_clients_to_connect(
-        targets: &Mutex<Vec<Sender<Result<Summary, Status>>>>,
-        clients_to_connect_receiver: &Mutex<Receiver<Sender<Result<Summary, Status>>>>,
+        log: Logger,
+        shutdown_receiver: tokio::sync::broadcast::Receiver<String>,
+        targets: &Mutex<Vec<ClientSubscription>>,
+        clients_to_connect_receiver: Receiver<ClientSubscription>,
     ) -> Result<(), tonic::transport::Error> {
-        let mut clients_to_connect_receiver = clients_to_connect_receiver.lock().await;
-        while let Some(client_to_connect) = clients_to_connect_receiver.recv().await {
-            targets.lock().await.push(client_to_connect);
+        let mut shutdown_receiver = shutdown_receiver;
+        let mut clients_to_connect_receiver = clients_to_connect_receiver;
+        loop {
+            tokio::select! {
+                message = clients_to_connect_receiver.recv() => {
+                    if let Some(client_to_connect) = message {
+                        targets.lock().await.push(client_to_connect);
+                    } else {
+                        info!(log, "no more messages listen_clients_to_connect");
+                        return Ok(());
+                    }
+                }
+                _ = shutdown_receiver.recv() => {
+                    info!(log, "application is shutting down, closing listen_clients_to_connect");
+                    return Ok(());
+                }
+            }
         }
-        Ok(())
     }
 
     async fn listen_summaries(
         log: Logger,
-        targets: &Mutex<Vec<Sender<Result<Summary, Status>>>>,
+        shutdown_receiver: tokio::sync::broadcast::Receiver<String>,
+        targets: &Mutex<Vec<ClientSubscription>>,
         grpc_receiver: UnboundedReceiver<Summary>,
     ) -> Result<(), tonic::transport::Error> {
+        let mut shutdown_receiver = shutdown_receiver;
         let mut grpc_receiver = grpc_receiver;
-        while let Some(summary) = grpc_receiver.recv().await {
-            let mut it_targets = targets.lock().await;
-            let mut resp = Vec::new();
-            for target in it_targets.iter() {
-                if let Err(err) = target.send(Ok(summary.clone())).await {
-                    info!(log, "client dropped"; "error" => format!("{:?}", err));
-                } else {
-                    resp.push(target.clone());
+        loop {
+            tokio::select! {
+                message = grpc_receiver.recv() => {
+                    if let Some(summary) = message {
+                        let mut it_targets = targets.lock().await;
+                        let mut resp = Vec::new();
+                        for target in it_targets.iter() {
+                            if let Err(err) = target.send(Ok(summary.clone())).await {
+                                info!(log, "client dropped"; "error" => format!("{:?}", err));
+                            } else {
+                                resp.push(target.clone());
+                            }
+                        }
+
+                        *it_targets = resp;
+                    } else {
+                        info!(log, "no more messages listen_summaries");
+                        return Ok(());
+                    }
+                }
+                _ = shutdown_receiver.recv() => {
+                    info!(log, "application is shutting down, closing listen_summaries");
+                    return Ok(());
                 }
             }
-
-            *it_targets = resp;
         }
-        Ok(())
     }
 }
 
@@ -112,8 +143,17 @@ impl OrderbookAggregator for OrderbookAggregatorImpl {
     }
 }
 
+async fn shutdown_signal(log: Logger, shutdown_receiver: tokio::sync::broadcast::Receiver<String>) {
+    info!(log, "waiting for the server to get a shutdown signal");
+    let mut shutdown_receiver = shutdown_receiver;
+    let _ = shutdown_receiver.recv().await;
+    info!(log, "got the shutdown signal, closing grpc server");
+}
+
+
 async fn run_grpc_server(
     log: Logger,
+    shutdown_sender: tokio::sync::broadcast::Sender<String>,
     grpc_receiver: UnboundedReceiver<Summary>,
     address: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -123,41 +163,52 @@ async fn run_grpc_server(
     info!(log, "starting server"; "address" => &address);
 
     let addr = address.parse()
-    .map_err(|e| format!("problem parsing address: {}", e))?;
+        .map_err(|e| format!("problem parsing address: {}", e))?;
 
     let targets = Mutex::new(Vec::new());
     let (clients_to_connect_sender, clients_to_connect_receiver) = mpsc::channel(10);
-    let clients_to_connect_receiver = Mutex::new(clients_to_connect_receiver);
     let orderbook = OrderbookAggregatorImpl::new(
-    log.clone(),
-    clients_to_connect_sender,
+        log.clone(),
+        clients_to_connect_sender,
     );
 
     info!(log, "Orderbook server listening"; "address" => addr);
 
+    let grpc_server_shutdown_receiver = shutdown_sender.subscribe();
+
     let run_grpc_server = Server::builder()
         .add_service(OrderbookAggregatorServer::new(orderbook))
-        .serve(addr)
+        .serve_with_shutdown(addr, shutdown_signal(log.clone(), grpc_server_shutdown_receiver))
         .with_context(cx);
 
+    let listen_summaries_shutdown_receiver = shutdown_sender.subscribe();
+    let listen_clients_to_connect_shutdown_receiver = shutdown_sender.subscribe();
+    drop(shutdown_sender);
     tokio::try_join!(
         OrderbookAggregatorImpl::listen_summaries(
             log.clone(),
+            listen_summaries_shutdown_receiver,
             &targets,
             grpc_receiver,
         ),
         OrderbookAggregatorImpl::listen_clients_to_connect(
+            log.clone(),
+            listen_clients_to_connect_shutdown_receiver,
             &targets,
-            &clients_to_connect_receiver,
+            clients_to_connect_receiver,
         ),
         run_grpc_server,
     )?;
+
+    info!(log, "run_grpc_server has ended");
 
     Ok(())
 }
 
 pub async fn run_server(
-    log: Logger, address: String, pair: Symbol, depth: usize,
+    log: Logger,
+    shutdown_sender: tokio::sync::broadcast::Sender<String>,
+    address: String, pair: Symbol, depth: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (summary_sender, summary_receiver) = mpsc::unbounded_channel();
     let (grpc_sender, grpc_receiver) = mpsc::unbounded_channel();
@@ -166,11 +217,21 @@ pub async fn run_server(
         log.clone(), summary_receiver, grpc_sender, depth,
     );
 
+    let binance_receiver = shutdown_sender.subscribe();
+    let bitstamp_receiver = shutdown_sender.subscribe();
+    let grpc_shutdown_sender = shutdown_sender.clone();
+    let merger_shutdown_sender = shutdown_sender;
     match tokio::try_join!(
-        run_binance(log.clone(), summary_sender.clone(), &pair, depth),
-        run_bitstamp(log.clone(), summary_sender, &pair, depth),
-        run_grpc_server(log.clone(), grpc_receiver, address),
-        merger.start(),
+        run_binance(
+            log.clone(), binance_receiver,
+            summary_sender.clone(), &pair, depth,
+        ),
+        run_bitstamp(
+            log.clone(), bitstamp_receiver,
+            summary_sender, &pair, depth,
+        ),
+        run_grpc_server(log.clone(), grpc_shutdown_sender, grpc_receiver, address),
+        merger.start(merger_shutdown_sender),
     ) {
         Ok((_, _, _, _)) => {}
         Err(err) => {
