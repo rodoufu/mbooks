@@ -191,7 +191,7 @@ impl OrderbookMerger {
             idx_resp += 1;
         }
 
-        (resp, Some(exchange.clone()))
+        (resp, Some(exchange))
     }
 }
 
