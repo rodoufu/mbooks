@@ -257,7 +257,9 @@ mod test {
             ],
         }).unwrap();
         drop(test_sender);
-        merger.start().await.unwrap();
+        let (shutdown_sender, shutdown_receiver) = tokio::sync::broadcast::channel(1);
+        merger.start(shutdown_sender).await.unwrap();
+        drop(shutdown_receiver);
 
         assert_eq!(3, merger.asks.len());
         assert_eq!(
@@ -394,7 +396,9 @@ mod test {
             ],
         }).unwrap();
         drop(test_sender);
-        merger.start().await.unwrap();
+        let (shutdown_sender, shutdown_receiver) = tokio::sync::broadcast::channel(1);
+        merger.start(shutdown_sender).await.unwrap();
+        drop(shutdown_receiver);
 
         assert_eq!(4, merger.bids.len());
         assert_eq!(
@@ -533,7 +537,9 @@ mod test {
         }).unwrap();
 
         drop(test_sender);
-        merger.start().await.unwrap();
+        let (shutdown_sender, shutdown_receiver) = tokio::sync::broadcast::channel(1);
+        merger.start(shutdown_sender).await.unwrap();
+        drop(shutdown_receiver);
 
         assert_eq!(2, merger.asks.len());
         assert_eq!(2, merger.bids.len());
@@ -597,7 +603,9 @@ mod test {
         }).unwrap();
 
         drop(test_sender);
-        merger.start().await.unwrap();
+        let (shutdown_sender, shutdown_receiver) = tokio::sync::broadcast::channel(1);
+        merger.start(shutdown_sender).await.unwrap();
+        drop(shutdown_receiver);
 
         assert_eq!(2, merger.bids.len());
         assert_eq!(

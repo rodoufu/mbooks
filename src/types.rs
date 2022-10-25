@@ -102,6 +102,8 @@ impl Into<orderbook::Level> for &Level {
     }
 }
 
+/// Summary is the internal implementation of the summary that is going to me sent to the gRPC server.
+/// It is implemented in separated message so it can be decoupled from the gRPC interface.
 #[derive(Clone, Debug)]
 pub struct Summary {
     pub bids: Vec<Level>,
