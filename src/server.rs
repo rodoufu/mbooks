@@ -44,6 +44,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 pub type ClientSubscription = Sender<Result<Summary, Status>>;
 
+/// OrderbookAggregatorImpl the gRPC server implementation.
 pub struct OrderbookAggregatorImpl {
     log: Logger,
     clients_to_connect_sender: Sender<ClientSubscription>,
@@ -60,6 +61,8 @@ impl OrderbookAggregatorImpl {
         }
     }
 
+    /// Listens to clients trying to connect and add them to the list of targets who will receive
+    /// the summary updates.
     async fn listen_clients_to_connect(
         log: Logger,
         shutdown_receiver: tokio::sync::broadcast::Receiver<String>,
@@ -86,6 +89,7 @@ impl OrderbookAggregatorImpl {
         }
     }
 
+    /// Listens to the summary updates from the WebSocket connections and updates internal book.
     async fn listen_summaries(
         log: Logger,
         shutdown_receiver: tokio::sync::broadcast::Receiver<String>,
@@ -143,6 +147,8 @@ impl OrderbookAggregator for OrderbookAggregatorImpl {
     }
 }
 
+/// Waits for the shutdown signal which will come from the channel.
+/// It is used to gracefully stop the `hyper` server answering to the gRPC requests.
 async fn shutdown_signal(log: Logger, shutdown_receiver: tokio::sync::broadcast::Receiver<String>) {
     info!(log, "waiting for the server to get a shutdown signal");
     let mut shutdown_receiver = shutdown_receiver;
@@ -150,7 +156,7 @@ async fn shutdown_signal(log: Logger, shutdown_receiver: tokio::sync::broadcast:
     info!(log, "got the shutdown signal, closing grpc server");
 }
 
-
+/// Creates and runs the gRPC server.
 async fn run_grpc_server(
     log: Logger,
     shutdown_sender: tokio::sync::broadcast::Sender<String>,
@@ -205,6 +211,8 @@ async fn run_grpc_server(
     Ok(())
 }
 
+/// Starts the `OrderbookMerger`, the exchange connections, the gRPC server and tries to join all
+/// those futures.
 pub async fn run_server(
     log: Logger,
     shutdown_sender: tokio::sync::broadcast::Sender<String>,
@@ -233,7 +241,9 @@ pub async fn run_server(
         run_grpc_server(log.clone(), grpc_shutdown_sender, grpc_receiver, address),
         merger.start(merger_shutdown_sender),
     ) {
-        Ok((_, _, _, _)) => {}
+        Ok((_, _, _, _)) => {
+            info!(log, "finished running server");
+        }
         Err(err) => {
             error!(log, "a problem occurred"; "error" => format!("{:?}", err));
         }

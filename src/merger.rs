@@ -26,7 +26,9 @@ use tokio::sync::mpsc::{
 
 pub struct OrderbookMerger {
     log: Logger,
+    /// Used to listen to updates from the WebSockets.
     summary_receiver: UnboundedReceiver<types::Summary>,
+    /// Used to send updates to connected clients.
     summary_sender: UnboundedSender<orderbook::Summary>,
     bids: Vec<Level>,
     asks: Vec<Level>,
@@ -50,6 +52,7 @@ impl OrderbookMerger {
         }
     }
 
+    /// Generates a `Summary` from the internal state.
     fn summary(&self) -> types::Summary {
         types::Summary {
             bids: self.bids.iter().take(self.depth).cloned().collect(),
@@ -57,6 +60,8 @@ impl OrderbookMerger {
         }
     }
 
+    /// Starts the process of listening to summary updates from the WebSockets and notifies with
+    /// the internal changes to the orderbook.
     pub async fn start(
         &mut self,
         shutdown_sender: tokio::sync::broadcast::Sender<String>,
@@ -78,7 +83,7 @@ impl OrderbookMerger {
                         std::mem::swap(&mut bids, &mut self.bids);
 
                         (self.bids, self.asks) = Self::process_summary(
-                            self.log.clone(), bids, asks, summary,
+                            self.log.clone(), bids, asks, summary, self.depth,
                         );
 
                         if let Err(err) = self.summary_sender.send(self.summary().into()) {
@@ -97,8 +102,9 @@ impl OrderbookMerger {
         }
     }
 
+    /// Process each summary update.
     fn process_summary(
-        log: Logger, bids: Vec<Level>, asks: Vec<Level>, summary: types::Summary,
+        log: Logger, bids: Vec<Level>, asks: Vec<Level>, summary: types::Summary, depth: usize,
     ) -> (Vec<Level>, Vec<Level>) {
         if summary.asks.is_empty() && summary.bids.is_empty() {
             return (bids, asks);
@@ -112,10 +118,10 @@ impl OrderbookMerger {
         std::mem::swap(&mut summary_bids, &mut summary.bids);
 
         let (bids, exchange_bids) = Self::process_summary_asks_bids(
-            summary_bids, bids, -1.0,
+            summary_bids, bids, -1.0, depth,
         );
         let (asks, exchange_aks) = Self::process_summary_asks_bids(
-            summary_asks, asks, 1.0,
+            summary_asks, asks, 1.0, depth,
         );
 
         info!(
@@ -127,8 +133,9 @@ impl OrderbookMerger {
         (bids, asks)
     }
 
+    /// Process a summary update for the ask or bid side.
     fn process_summary_asks_bids(
-        summary_asks_bids: Vec<Level>, asks_bids: Vec<Level>, multiplier: f64,
+        summary_asks_bids: Vec<Level>, asks_bids: Vec<Level>, multiplier: f64, depth: usize,
     ) -> (Vec<Level>, Option<String>) {
         if summary_asks_bids.is_empty() {
             return (asks_bids, None);
@@ -140,6 +147,9 @@ impl OrderbookMerger {
 
         let mut asks_bids = asks_bids;
         let mut summary_asks_bids = summary_asks_bids;
+        if summary_asks_bids.len() > depth {
+            summary_asks_bids.truncate(depth);
+        }
 
         let exchange = summary_asks_bids[0].exchange.clone();
         let count_exchange = asks_bids.iter()
@@ -221,7 +231,7 @@ mod test {
         let (summary_sender, _summary_receiver) = mpsc::unbounded_channel();
         let (test_sender, summary_receiver) = mpsc::unbounded_channel();
         let mut merger = OrderbookMerger::new(
-            logger, summary_receiver, summary_sender, 2,
+            logger, summary_receiver, summary_sender, 4,
         );
 
         let binance = "binance".to_string();

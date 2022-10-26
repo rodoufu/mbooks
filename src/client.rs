@@ -19,6 +19,7 @@ use slog::{
 use tonic::Request;
 use tokio::sync::broadcast::Receiver;
 
+/// Connects to the server and listen to all received updates printing in the log.
 pub async fn run_client(
     log: Logger,
     shutdown_receiver: &mut Receiver<String>,

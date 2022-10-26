@@ -8,20 +8,22 @@ use std::{
 };
 
 #[derive(Debug)]
-pub enum WebsocketError {
+pub enum MBooksError {
     InvalidAsset(String),
     InvalidPair(String),
     ParseError(ParseFloatError),
 }
 
-impl Display for WebsocketError {
+impl Display for MBooksError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-impl std::error::Error for WebsocketError {}
+impl std::error::Error for MBooksError {}
 
+/// Asset is designed to keep the supported assets.
+/// It avoids problems with typos, or configuring an unsupported asset in the market.
 #[derive(Debug, Eq, PartialEq)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum Asset {
@@ -38,7 +40,7 @@ pub enum Asset {
 }
 
 impl TryFrom<&str> for Asset {
-    type Error = WebsocketError;
+    type Error = MBooksError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
@@ -52,7 +54,7 @@ impl TryFrom<&str> for Asset {
             "usd" => Ok(Asset::USD),
             "usdt" => Ok(Asset::USDT),
             "usdc" => Ok(Asset::USDC),
-            _ => Err(WebsocketError::InvalidAsset(value.to_string())),
+            _ => Err(MBooksError::InvalidAsset(value.to_string())),
         }
     }
 }
@@ -70,13 +72,13 @@ pub struct Symbol {
 }
 
 impl TryFrom<String> for Symbol {
-    type Error = WebsocketError;
+    type Error = MBooksError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let value = value.to_lowercase();
         let pos_slash = value.find('/')
             .map(Ok)
-            .unwrap_or_else(|| Err(WebsocketError::InvalidPair(value.clone())))?;
+            .unwrap_or_else(|| Err(MBooksError::InvalidPair(value.clone())))?;
         Ok(Self {
             base: Asset::try_from(&value[..pos_slash])?,
             quote: Asset::try_from(&value[pos_slash + 1..])?,
@@ -84,6 +86,9 @@ impl TryFrom<String> for Symbol {
     }
 }
 
+/// Level internal representation of a level abstracts from the gRPC format used in the messages.
+/// The gRPC format is the API that may change, so having this separated will not require a change
+/// in the internal logic or representation in case the API needs to be updated.
 #[derive(PartialEq, Clone, Debug)]
 pub struct Level {
     pub exchange: String,

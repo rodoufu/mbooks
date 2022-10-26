@@ -2,7 +2,7 @@ use crate::types::{
     Level,
     Symbol,
     Summary,
-    WebsocketError,
+    MBooksError,
 };
 use futures_util::{
     SinkExt,
@@ -39,15 +39,15 @@ struct Data {
 }
 
 impl TryInto<Summary> for Data {
-    type Error = WebsocketError;
+    type Error = MBooksError;
 
     fn try_into(self) -> Result<Summary, Self::Error> {
         let mut bids = Vec::with_capacity(self.bids.len());
         for bid in &self.bids {
             bids.push(Level {
                 exchange: "bitstamp".to_string(),
-                price: bid[0].parse::<f64>().map_err(WebsocketError::ParseError)?,
-                quantity: bid[1].parse::<f64>().map_err(WebsocketError::ParseError)?,
+                price: bid[0].parse::<f64>().map_err(MBooksError::ParseError)?,
+                quantity: bid[1].parse::<f64>().map_err(MBooksError::ParseError)?,
             });
         }
 
@@ -55,8 +55,8 @@ impl TryInto<Summary> for Data {
         for ask in &self.asks {
             asks.push(Level {
                 exchange: "bitstamp".to_string(),
-                price: ask[0].parse::<f64>().map_err(WebsocketError::ParseError)?,
-                quantity: ask[1].parse::<f64>().map_err(WebsocketError::ParseError)?,
+                price: ask[0].parse::<f64>().map_err(MBooksError::ParseError)?,
+                quantity: ask[1].parse::<f64>().map_err(MBooksError::ParseError)?,
             });
         }
 
@@ -110,7 +110,7 @@ pub async fn run_bitstamp(
         ))
     ).with_context(cx.clone()).await?;
 
-    let mut shutdown_receiver= shutdown_receiver;
+    let mut shutdown_receiver = shutdown_receiver;
 
     loop {
         tokio::select! {
@@ -131,10 +131,10 @@ pub async fn run_bitstamp(
                                         WebSocketEvent::Data { mut data } => {
                                             // Keeping only the updates within the depth
                                             if data.bids.len() > depth as usize {
-                                                data.bids = data.bids.as_slice()[..(depth as usize)].to_vec();
+                                                data.bids.truncate(depth);
                                             }
                                             if data.asks.len() > depth as usize {
-                                                data.asks = data.asks.as_slice()[..(depth as usize)].to_vec();
+                                                data.asks.truncate(depth);
                                             }
 
                                             match TryInto::<Summary>::try_into(data) {

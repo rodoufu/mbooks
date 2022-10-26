@@ -10,16 +10,31 @@ The `Source` receives a channel to which it is going to send all the updates it 
 In this case was implemented `run_binance` for Binance and `run_bitstamp` for Bitstamp.
 - `Server`, the implementation of the gRPC server that will listen to requests and stream the Summary updates.
 The `OrderbookAggregatorImpl` keeps a list of `ClientSubscription` which is a channel to send the summaries, so on
-every updates it gets, it is going to send it to all the subscribed clients.
+every update it gets, it is going to send it to all the subscribed clients.
 - `Client`, the gRPC client implementation who will make a request and listen to the Summary updates and print them.
 
 The service implements a graceful shutdown that listens to the `Ctrl + C` commands and propagates it to all services using a channel.
 The usage of graceful stop can be very important in scenarios where it is necessary to do something once the service is closed.
 For example, if it is a bot trading it may be necessary to close all the open orders instead of just shutting down and leaving they all open.
 
-The service is using a simple configuration of `slog` as the structured logger, which is a good option to add meta data to the log messages.
+The service is using a simple configuration of `slog` as the structured logger, which is a good option to add metadata to the log messages.
+It also uses OpenTelemetry to add some tracing information to application, it could also make use of metrics such as Prometheus counter to help in the monitoring of the service.
 
 There is a simple docker compose services configuration to demonstrate a server being created and 10 clients listening to it.
+
+To deserialize the JSON from the exchanges it is using Serde, it may have faster options, but I did not want to focus on this kind of optimization.
+The main goal was to focus on the service itself and managing the orders from the book.
+
+In order to generate the Rust code from the `proto` definitions it was chosen to create a `build.rs` and use `tonic` to build it
+since it was going to be tue one used to run the gRPC server.
+A good tool to use here is `bufbuild`, which has the ability to generate code from the `proto` definition and also provides a `lint` tool with some good practices.
+
+It is possible to configure the application and choose the pair that is going to be streamed by the server.
+Although, each side of the pair needs to match an enumeration maintained internally.
+It was designed like that, so it can be translated to distinct market formats across new exchanges that may be added and
+it is also used as a safeguard, to avoid problems with typos like configuring `ETC` instead of `ETH`.
+It expects the markets in the format `eth/btc`, then it translates to the format each exchange expects.
+It was designed like that (with the `/`) to simplify using assets with 3 or 4 characters.
 
 ## OrderbookMerger
 
@@ -29,7 +44,7 @@ Considering that:
 
 It doesn't need to keep all the book from the `Source`
 So the `Source` is sending only the `k` registers from the Orderbook in a sorted vector.
-This way the merger leverages that the updates are sorted so it can use the merge step of the merge sort to just keep the `k` registers (from the current exchange) it needs,
+This way the merger leverages that the updates are sorted, so it can use the merge step of the merge sort to just keep the `k` registers (from the current exchange) it needs,
 which would cost `O(e k)` comparisons.
 
 It keeps `k` orders for each exchange, so `e * k` in total, that would change the time complexity to `O(e k)` where e is the number of exchanges, 
@@ -98,6 +113,7 @@ Found 8 outliers among 100 measurements (8.00%)
   4 (4.00%) high severe
 
 merger merging 100 objects
+
                         time:   [48.913 µs 49.073 µs 49.316 µs]
                         change: [-62.402% -62.191% -61.947%] (p = 0.00 < 0.05)
                         Performance has improved.

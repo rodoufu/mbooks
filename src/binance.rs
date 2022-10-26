@@ -2,7 +2,7 @@ use crate::types::{
     Level,
     Symbol,
     Summary,
-    WebsocketError,
+    MBooksError,
 };
 use futures_util::StreamExt;
 use opentelemetry::{
@@ -33,15 +33,15 @@ struct DepthSnapshot {
 }
 
 impl TryInto<Summary> for DepthSnapshot {
-    type Error = WebsocketError;
+    type Error = MBooksError;
 
     fn try_into(self) -> Result<Summary, Self::Error> {
         let mut bids = Vec::with_capacity(self.bids.len());
         for bid in &self.bids {
             bids.push(Level {
                 exchange: "binance".to_string(),
-                price: bid[0].parse::<f64>().map_err(WebsocketError::ParseError)?,
-                quantity: bid[1].parse::<f64>().map_err(WebsocketError::ParseError)?,
+                price: bid[0].parse::<f64>().map_err(MBooksError::ParseError)?,
+                quantity: bid[1].parse::<f64>().map_err(MBooksError::ParseError)?,
             });
         }
 
@@ -49,8 +49,8 @@ impl TryInto<Summary> for DepthSnapshot {
         for ask in &self.asks {
             asks.push(Level {
                 exchange: "binance".to_string(),
-                price: ask[0].parse::<f64>().map_err(WebsocketError::ParseError)?,
-                quantity: ask[1].parse::<f64>().map_err(WebsocketError::ParseError)?,
+                price: ask[0].parse::<f64>().map_err(MBooksError::ParseError)?,
+                quantity: ask[1].parse::<f64>().map_err(MBooksError::ParseError)?,
             });
         }
 
